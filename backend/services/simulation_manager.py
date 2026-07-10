@@ -134,9 +134,9 @@ class SimulationManager:
 
             with self.lock:
                 rec.status = "done"
-                rec.wind_json_path = str(wind_json_path.resolve())
-                rec.wind_vtk_path = str(wind_vtk_path.resolve())
-                rec.solid_npy_path = str(solid_npy_path.resolve())
+                rec.wind_json_path = str(wind_json_path)
+                rec.wind_vtk_path = str(wind_vtk_path)
+                rec.solid_npy_path = str(solid_npy_path)
                 rec.meta = meta
                 self._touch_recent(sim_id)
         except Exception as e:

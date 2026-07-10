@@ -8,6 +8,9 @@ from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import cg
 
 from services.cfd import point_in_polygon
+from urban_flighter_rl.potential_flow import solve_potential_flow_slice
+from urban_flighter_rl.wind_corrections import apply_wall_damping_and_wake
+from urban_flighter_rl.world import Building, UrbanWorld
 
 
 def wind_dir_to_inlet_vector(speed_mps: float, deg_from_north: float) -> np.ndarray:
@@ -52,6 +55,38 @@ def rasterize_building_mask(
                 if point_in_polygon(wx, wy, footprint):
                     mask[ix, iy] = True
 
+    return mask
+
+
+def rasterize_building_mask_on_grid(
+    buildings: list[dict[str, Any]],
+    x: np.ndarray,
+    y: np.ndarray,
+    altitude_m: float,
+) -> np.ndarray:
+    """Rasterize real OSM polygon footprints on an existing solver grid.
+
+    The B solver uses rectangular prisms internally for speed, but the field mask
+    returned to the frontend should align with the displayed OSM geometry, not
+    those internal bounding boxes.
+    """
+    mask = np.zeros((len(x), len(y)), dtype=bool)
+    for building in buildings:
+        if float(building.get("height", 0.0) or 0.0) < altitude_m:
+            continue
+        footprint = np.asarray(building.get("footprint", []), dtype=np.float32)
+        if footprint.ndim != 2 or footprint.shape[0] < 3 or footprint.shape[1] != 2:
+            continue
+        min_x, min_y = footprint.min(axis=0)
+        max_x, max_y = footprint.max(axis=0)
+        ix0 = max(0, int(np.searchsorted(x, min_x, side="left")) - 1)
+        ix1 = min(len(x) - 1, int(np.searchsorted(x, max_x, side="right")) + 1)
+        iy0 = max(0, int(np.searchsorted(y, min_y, side="left")) - 1)
+        iy1 = min(len(y) - 1, int(np.searchsorted(y, max_y, side="right")) + 1)
+        for ix in range(ix0, ix1 + 1):
+            for iy in range(iy0, iy1 + 1):
+                if point_in_polygon(float(x[ix]), float(y[iy]), footprint):
+                    mask[ix, iy] = True
     return mask
 
 
@@ -222,3 +257,184 @@ def compute_time_averaged_flow_2d(
             "cg_info_v": int(solver_info_v),
         },
     }
+
+
+def _streamfunction_freestream(xx: np.ndarray, yy: np.ndarray, inlet_velocity: np.ndarray) -> np.ndarray:
+    u, v = float(inlet_velocity[0]), float(inlet_velocity[1])
+    return u * yy - v * xx
+
+
+def _building_center_and_span(building: dict[str, Any], cell_size_m: float) -> tuple[np.ndarray, float]:
+    footprint = np.asarray(building.get("footprint", []), dtype=np.float32)
+    if footprint.ndim != 2 or footprint.shape[0] < 3:
+        return np.zeros(2, dtype=np.float32), float(cell_size_m * 2.0)
+    center = footprint[:-1].mean(axis=0) if np.allclose(footprint[0], footprint[-1]) and len(footprint) > 3 else footprint.mean(axis=0)
+    span = max(float(np.ptp(footprint[:, 0])), float(np.ptp(footprint[:, 1])), float(cell_size_m * 2.0))
+    return center.astype(np.float32), span
+
+
+def solve_polygon_potential_flow_b(
+    buildings: list[dict[str, Any]],
+    inlet_velocity: np.ndarray,
+    radius_m: float,
+    cell_size_m: float,
+    altitude_m: float,
+    max_iter: int = 3500,
+    tolerance: float = 1e-4,
+    relaxation: float = 0.85,
+) -> dict[str, Any]:
+    """CFD-lite B streamfunction solve on actual OSM polygon footprints.
+
+    Earlier B used axis-aligned bounding boxes internally. That was fast, but
+    diagonal buildings became x/y-aligned rectangles in the flow model. This
+    version keeps the cheap potential-flow approximation but rasterizes the real
+    polygon footprint on the solver grid.
+    """
+    x = np.arange(-float(radius_m), float(radius_m) + cell_size_m * 0.5, float(cell_size_m), dtype=np.float32)
+    y = np.arange(-float(radius_m), float(radius_m) + cell_size_m * 0.5, float(cell_size_m), dtype=np.float32)
+    nx, ny = len(x), len(y)
+    xx, yy = np.meshgrid(x, y, indexing="ij")
+    mask = rasterize_building_mask_on_grid(buildings, x, y, altitude_m)
+
+    psi = _streamfunction_freestream(xx, yy, inlet_velocity).astype(np.float64)
+    fixed = np.zeros((nx, ny), dtype=bool)
+    fixed[0, :] = True
+    fixed[-1, :] = True
+    fixed[:, 0] = True
+    fixed[:, -1] = True
+    fixed |= mask
+
+    # Each obstacle gets a constant streamfunction near its actual centroid.
+    # This enforces approximate no-through-flow without replacing the footprint
+    # with an axis-aligned rectangle.
+    for building in buildings:
+        if float(building.get("height", 0.0) or 0.0) < altitude_m:
+            continue
+        footprint = np.asarray(building.get("footprint", []), dtype=np.float32)
+        if footprint.ndim != 2 or footprint.shape[0] < 3 or footprint.shape[1] != 2:
+            continue
+        center, _ = _building_center_and_span(building, cell_size_m)
+        min_x, min_y = footprint.min(axis=0)
+        max_x, max_y = footprint.max(axis=0)
+        ix0 = max(0, int(np.searchsorted(x, min_x, side="left")) - 1)
+        ix1 = min(nx - 1, int(np.searchsorted(x, max_x, side="right")) + 1)
+        iy0 = max(0, int(np.searchsorted(y, min_y, side="left")) - 1)
+        iy1 = min(ny - 1, int(np.searchsorted(y, max_y, side="right")) + 1)
+        local = np.zeros((nx, ny), dtype=bool)
+        local[ix0:ix1 + 1, iy0:iy1 + 1] = mask[ix0:ix1 + 1, iy0:iy1 + 1]
+        if local.any():
+            center_psi = float(_streamfunction_freestream(np.array([[center[0]]]), np.array([[center[1]]]), inlet_velocity)[0, 0])
+            psi[local] = center_psi
+
+    fluid_update = ~fixed
+    converged_iter = max_iter
+    residual = float("inf")
+    for it in range(1, max_iter + 1):
+        old = psi.copy()
+        avg = 0.25 * (psi[:-2, 1:-1] + psi[2:, 1:-1] + psi[1:-1, :-2] + psi[1:-1, 2:])
+        upd = fluid_update[1:-1, 1:-1]
+        psi[1:-1, 1:-1][upd] = (1.0 - relaxation) * psi[1:-1, 1:-1][upd] + relaxation * avg[upd]
+        residual = float(np.max(np.abs(psi - old)))
+        if residual < tolerance:
+            converged_iter = it
+            break
+
+    dpsi_dx = np.gradient(psi, float(cell_size_m), axis=0)
+    dpsi_dy = np.gradient(psi, float(cell_size_m), axis=1)
+    ux = dpsi_dy.astype(np.float32)
+    uy = (-dpsi_dx).astype(np.float32)
+    ux[mask] = 0.0
+    uy[mask] = 0.0
+
+    speed0 = max(float(np.linalg.norm(inlet_velocity)), 1e-6)
+    speed = np.sqrt(ux * ux + uy * uy)
+    cap = speed0 * 2.8
+    scale = np.minimum(1.0, cap / np.maximum(speed, 1e-6))
+    ux *= scale
+    uy *= scale
+
+    dist_m = distance_transform_edt(~mask).astype(np.float32) * float(cell_size_m)
+    damping = 1.0 - np.exp(-dist_m / max(14.0, float(cell_size_m)))
+    ux *= damping
+    uy *= damping
+
+    wind_hat = inlet_velocity / speed0
+    cross_hat = np.array([-wind_hat[1], wind_hat[0]], dtype=np.float32)
+    deficit = np.zeros_like(ux, dtype=np.float32)
+    for building in buildings:
+        if float(building.get("height", 0.0) or 0.0) < altitude_m:
+            continue
+        center, span = _building_center_and_span(building, cell_size_m)
+        rel_x = xx - float(center[0])
+        rel_y = yy - float(center[1])
+        along = rel_x * wind_hat[0] + rel_y * wind_hat[1]
+        cross = rel_x * cross_hat[0] + rel_y * cross_hat[1]
+        wake_len = max(span * 5.5, cell_size_m * 8.0)
+        wake_width = span * 0.7 + np.maximum(along, 0.0) * 0.22 + cell_size_m
+        local = (along > 0.0).astype(np.float32) * np.exp(-np.maximum(along, 0.0) / wake_len) * np.exp(-np.square(cross / np.maximum(wake_width, cell_size_m)))
+        deficit = np.maximum(deficit, local.astype(np.float32))
+    wake_factor = 1.0 - 0.55 * np.clip(deficit, 0.0, 1.0)
+    ux *= wake_factor
+    uy *= wake_factor
+    ux[mask] = 0.0
+    uy[mask] = 0.0
+
+    speed_grid = np.sqrt(ux * ux + uy * uy)
+    return {
+        "nx": int(nx),
+        "ny": int(ny),
+        "cell_size_m": float(cell_size_m),
+        "bounds": {"min_x": float(x[0]), "max_x": float(x[-1]), "min_y": float(y[0]), "max_y": float(y[-1])},
+        "ux": ux.ravel(order="C").tolist(),
+        "uy": uy.ravel(order="C").tolist(),
+        "mask": mask.astype(np.uint8).ravel(order="C").tolist(),
+        "stats": {
+            "mean_speed_mps": float(speed_grid.mean()),
+            "max_speed_mps": float(speed_grid.max()),
+            "blocked_fraction": float(mask.mean()),
+            "model": "polygon-potential-flow-cfd-lite-wall-damping-wake-correction",
+            "iterations": int(converged_iter),
+            "residual": float(residual),
+            "altitude_m": float(altitude_m),
+            "wall_damping_length_m": 14.0,
+            "wake_strength": 0.55,
+            "internal_obstacle_geometry": "actual_osm_polygon_mask",
+        },
+    }
+
+
+def _buildings_to_bbox_world(buildings: list[dict[str, Any]], radius_m: float) -> UrbanWorld:
+    """Convert frontend OSM polygons into rectangular prisms for the fast B solver."""
+    world_buildings: list[Building] = []
+    max_height = 180.0
+    for building in buildings:
+        footprint = np.asarray(building.get("footprint", []), dtype=np.float32)
+        if footprint.ndim != 2 or footprint.shape[0] < 3 or footprint.shape[1] != 2:
+            continue
+        min_xy = footprint.min(axis=0)
+        max_xy = footprint.max(axis=0)
+        size = np.maximum(max_xy - min_xy, 2.0)
+        center = 0.5 * (min_xy + max_xy)
+        height = float(building.get("height", 25.0) or 25.0)
+        max_height = max(max_height, height + 30.0)
+        world_buildings.append(Building(center=center.astype(float), size=size.astype(float), height=height))
+    return UrbanWorld(bounds=(-radius_m, radius_m, -radius_m, radius_m, 0.0, max_height), buildings=world_buildings)
+
+
+def compute_cfd_lite_b_flow_2d(
+    buildings: list[dict[str, Any]],
+    inlet_velocity: np.ndarray,
+    radius_m: float,
+    cell_size_m: float,
+    altitude_m: float = 35.0,
+) -> dict[str, Any]:
+    """Model B: potential-flow grid + wall damping + empirical wake correction."""
+    return solve_polygon_potential_flow_b(
+        buildings=buildings,
+        inlet_velocity=np.asarray(inlet_velocity, dtype=np.float32),
+        radius_m=radius_m,
+        cell_size_m=cell_size_m,
+        altitude_m=altitude_m,
+        max_iter=3500,
+        tolerance=1e-4,
+    )

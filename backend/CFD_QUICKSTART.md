@@ -2,7 +2,7 @@
 
 ## Run
 ```bash
-cd /Users/jangjaewon/Project/urbanflighter/backend
+cd <repo>/backend
 source venv/bin/activate
 python main.py
 ```

@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { BuildingData, FlowField2DResponse } from '../api';
 import { calculateDragEnergy } from '../utils/dragEnergy';
+import { getLidarJetCss, type LidarDisplayPose, type LidarTelemetry } from '../sensors/lidar';
+import {
+  DEFAULT_LIDAR_2D_CONFIG,
+  createLidar2DLocalDirections,
+  scanLidar2D,
+  selectLidar2DSpawn,
+  summarizeLidar2DScan,
+  type Lidar2DScan,
+} from '../sensors/lidar2d';
 
 interface Vec2 {
   x: number;
@@ -12,6 +21,7 @@ interface TopDownGameProps {
   showFlowAnimation: boolean;
   flowVisualization?: FlowVisualization;
   windScale?: number;
+  showLidar?: boolean;
   onTelemetry: (telemetry: Telemetry) => void;
 }
 
@@ -25,6 +35,8 @@ export interface Telemetry {
   energyUsed: number;
   headingDeg: number;
   position: Vec2;
+  displayPose: LidarDisplayPose;
+  lidar?: LidarTelemetry;
 }
 
 interface WorldState {
@@ -63,6 +75,7 @@ const DRAG = 0.9;
 const DRONE_RADIUS = 12;
 const VIEW_RADIUS_M = 200;
 const PARTICLE_COUNT = 900;
+const LIDAR_INTERVAL_S = 0.1;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -509,33 +522,12 @@ function resetWorld(flow: FlowField2DResponse | null): WorldState {
     return { position: { x: 0, y: 0 }, velocity: { x: 0, y: 0 }, heading: 0, energyUsed: 0 };
   }
 
-  const { bounds } = flow.field;
-  const center = {
-    x: (bounds.min_x + bounds.max_x) * 0.5,
-    y: (bounds.min_y + bounds.max_y) * 0.5,
-  };
-  const spanX = bounds.max_x - bounds.min_x;
-  const spanY = bounds.max_y - bounds.min_y;
-  const candidates = [
-    center,
-    { x: center.x, y: center.y + spanY * 0.18 },
-    { x: center.x, y: center.y - spanY * 0.18 },
-    { x: center.x - spanX * 0.18, y: center.y },
-    { x: center.x + spanX * 0.18, y: center.y },
-    { x: bounds.min_x + spanX * 0.12, y: center.y },
-  ];
-
-  const isClear = (point: Vec2) => !flow.buildings.some((building) => pointInPolygon(point, building.footprint));
-  const found = candidates.find(isClear)
-    ?? (() => {
-      for (let y = bounds.min_y + 30; y <= bounds.max_y - 30; y += 30) {
-        for (let x = bounds.min_x + 30; x <= bounds.max_x - 30; x += 30) {
-          const point = { x, y };
-          if (isClear(point)) return point;
-        }
-      }
-      return { x: bounds.min_x + 30, y: bounds.min_y + 30 };
-    })();
+  const found = selectLidar2DSpawn(
+    flow.field.bounds,
+    flow.buildings,
+    DRONE_RADIUS + 4,
+    DEFAULT_LIDAR_2D_CONFIG,
+  );
 
   return {
     position: found,
@@ -550,6 +542,7 @@ export default function TopDownGame({
   showFlowAnimation,
   flowVisualization = 'arrows',
   windScale = 1,
+  showLidar = true,
   onTelemetry,
 }: TopDownGameProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -560,9 +553,13 @@ export default function TopDownGame({
   const particlesRef = useRef<FlowParticle[]>([]);
   const trailRef = useRef<Vec2[]>([]);
   const flowLayerRef = useRef<HTMLCanvasElement | null>(null);
+  const lidarClockRef = useRef(LIDAR_INTERVAL_S);
+  const lidarScanRef = useRef<Lidar2DScan | null>(null);
+  const lidarTelemetryRef = useRef<LidarTelemetry | null>(null);
 
   const buildings = useMemo(() => flow?.buildings ?? [], [flow]);
   const obstacles = useMemo(() => buildObstacles(buildings), [buildings]);
+  const lidarDirections = useMemo(() => createLidar2DLocalDirections(DEFAULT_LIDAR_2D_CONFIG), []);
   const bounds = flow?.field.bounds;
   const speedColormap = useMemo(() => (flow ? buildSpeedColormap(flow) : null), [flow]);
   const viewportBounds = useMemo(() => {
@@ -621,6 +618,9 @@ export default function TopDownGame({
     particlesRef.current = flow && viewportBounds
       ? Array.from({ length: PARTICLE_COUNT }, () => createParticle(viewportBounds, flow))
       : [];
+    lidarClockRef.current = LIDAR_INTERVAL_S;
+    lidarScanRef.current = null;
+    lidarTelemetryRef.current = null;
   }, [flow, viewportBounds]);
 
   useEffect(() => {
@@ -763,6 +763,31 @@ export default function TopDownGame({
 
       const energyRate = computeEnergyRate(world.velocity, wind);
       world.energyUsed += energyRate * dt;
+
+      if (showLidar) {
+        lidarClockRef.current += dt;
+        if (lidarClockRef.current >= LIDAR_INTERVAL_S) {
+          lidarClockRef.current = 0;
+          const scan = scanLidar2D(
+            { position: world.position, heading: world.heading },
+            buildings,
+            DEFAULT_LIDAR_2D_CONFIG,
+            lidarDirections,
+          );
+          lidarScanRef.current = scan;
+          lidarTelemetryRef.current = summarizeLidar2DScan(scan, {
+            x: world.position.x,
+            y: 0,
+            z: world.position.y,
+            yaw: -world.heading,
+            pitch: 0,
+            roll: 0,
+          });
+        }
+      } else {
+        lidarScanRef.current = null;
+        lidarTelemetryRef.current = null;
+      }
 
       const trail = trailRef.current;
       const lastTrailPoint = trail.at(-1);
@@ -958,6 +983,21 @@ export default function TopDownGame({
         context.stroke();
       });
 
+      if (showLidar && lidarScanRef.current) {
+        context.save();
+        context.globalCompositeOperation = 'lighter';
+        lidarScanRef.current.samples.forEach((sample) => {
+          if (!sample.hit || !sample.point) return;
+          const point = worldToCanvas(sample.point, width, height, viewportBounds);
+          context.fillStyle = getLidarJetCss(sample.normalizedDistance);
+          context.globalAlpha = 0.92;
+          context.beginPath();
+          context.arc(point.x, point.y, 2.2, 0, Math.PI * 2);
+          context.fill();
+        });
+        context.restore();
+      }
+
       const droneCanvasPoint = worldToCanvas(world.position, width, height, viewportBounds);
       drawDrone(context, droneCanvasPoint, world.heading);
 
@@ -991,6 +1031,15 @@ export default function TopDownGame({
         energyUsed: world.energyUsed,
         headingDeg: ((world.heading * 180) / Math.PI + 360) % 360,
         position: { ...world.position },
+        displayPose: {
+          x: world.position.x,
+          y: 0,
+          z: world.position.y,
+          yaw: -world.heading,
+          pitch: 0,
+          roll: 0,
+        },
+        lidar: showLidar ? lidarTelemetryRef.current ?? undefined : undefined,
       });
     };
 
@@ -1010,9 +1059,11 @@ export default function TopDownGame({
     fieldPreview,
     flow,
     flowVisualization,
+    lidarDirections,
     obstacles,
     onTelemetry,
     showFlowAnimation,
+    showLidar,
     speedColormap,
     streamlines,
     viewportBounds,

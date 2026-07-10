@@ -1,53 +1,22 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { BuildingData } from '../api';
+import { buildBuildingMeshData } from '../geometry/buildingGeometry';
 
 interface CityModelProps {
   buildings: BuildingData[];
+  showClearanceHalo?: boolean;
 }
 
-interface BuildingMeshData {
-  color: string;
-  edgeGeometry: THREE.EdgesGeometry;
-  geometry: THREE.ExtrudeGeometry;
-  height: number;
-}
+const CityModel: React.FC<CityModelProps> = ({ buildings, showClearanceHalo = false }) => {
+  const buildingMeshes = useMemo(() => buildBuildingMeshData(buildings), [buildings]);
 
-function getHeightColor(height: number) {
-  if (height > 110) return '#ffffff';
-  if (height > 70) return '#e1e4de';
-  if (height > 35) return '#c8ccc7';
-  return '#929995';
-}
-
-const CityModel: React.FC<CityModelProps> = ({ buildings }) => {
-  const buildingMeshes = useMemo<BuildingMeshData[]>(() => {
-    return buildings.flatMap((building) => {
-      if (!building.footprint || building.footprint.length < 3) return [];
-
-      const shape = new THREE.Shape();
-      shape.moveTo(building.footprint[0][0], building.footprint[0][1]);
-      for (let i = 1; i < building.footprint.length; i += 1) {
-        shape.lineTo(building.footprint[i][0], building.footprint[i][1]);
-      }
-      shape.closePath();
-
-      const geometry = new THREE.ExtrudeGeometry(shape, {
-        steps: 1,
-        depth: building.height,
-        bevelEnabled: false,
-      });
-      geometry.rotateX(-Math.PI / 2);
-      geometry.computeVertexNormals();
-
-      return [{
-        color: getHeightColor(building.height),
-        edgeGeometry: new THREE.EdgesGeometry(geometry, 28),
-        geometry,
-        height: building.height,
-      }];
+  useEffect(() => () => {
+    buildingMeshes.forEach((building) => {
+      building.edgeGeometry.dispose();
+      building.geometry.dispose();
     });
-  }, [buildings]);
+  }, [buildingMeshes]);
 
   return (
     <group>
@@ -65,14 +34,20 @@ const CityModel: React.FC<CityModelProps> = ({ buildings }) => {
           <lineSegments geometry={building.edgeGeometry}>
             <lineBasicMaterial color="#15191d" transparent opacity={0.2} />
           </lineSegments>
+          {showClearanceHalo && (
+            <mesh position={[building.center.x, building.height / 2, building.center.y]} renderOrder={1}>
+              <cylinderGeometry args={[building.haloRadius, building.haloRadius, building.height + 6, 40, 1, true]} />
+              <meshBasicMaterial color="#ff8a2a" transparent opacity={0.075} depthWrite={false} side={THREE.DoubleSide} />
+            </mesh>
+          )}
         </group>
       ))}
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.15, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.08, 0]} receiveShadow>
         <planeGeometry args={[5200, 5200]} />
-        <meshStandardMaterial color="#161a1d" roughness={1} metalness={0} />
+        <meshStandardMaterial color="#252b2e" roughness={0.97} metalness={0.02} />
       </mesh>
-      <gridHelper args={[5200, 104, '#39424a', '#20252a']} position={[0, 0.04, 0]} />
+      <gridHelper args={[5200, 104, '#485158', '#2d3439']} position={[0, 0.025, 0]} />
     </group>
   );
 };

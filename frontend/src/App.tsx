@@ -1,189 +1,283 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import EnergyGraph, { type EnergyGraphScale } from './components/EnergyGraph';
-import LocationPicker from './components/LocationPicker';
-import MissionIntelligence from './components/MissionIntelligence';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 import Simulation3D from './components/Simulation3D';
-import TopDownGame, { type FlowVisualization, type Telemetry } from './components/TopDownGame';
-import { fetchAeroJaxDemoFlow, fetchFlowField2D, type FlowField2DResponse } from './api';
+import TopDownGame from './components/TopDownGame';
+import { type ViewMode } from './appModel';
+import CommandBar from './components/CommandBar';
+import HudPanel from './components/HudPanel';
+import LocalReturns2D from './components/LocalReturns2D';
+import LocalReturnsRadar from './components/LocalReturnsRadar';
+import RegionPanel from './components/RegionPanel';
+import { useUrbanFlighterData } from './hooks/useUrbanFlighterData';
 import './App.css';
 
-const DEFAULT_LAT = 37.451448;
-const DEFAULT_LON = 126.6515423;
-const GEOMETRY_RADIUS_M = 400;
-const SOLVE_RADIUS_M = 400;
-const DEFAULT_GRID = 1;
-type ViewMode = '2d' | '3d';
-type SimulationMode = ViewMode | 'real';
+type CockpitWindow = 'map' | 'telemetry' | 'slam';
+type WindowPosition = { x: number; y: number };
+type WindowSize = { width: number; height: number };
 
-function describeAeroJaxSource(flow: FlowField2DResponse) {
-  const timestep = flow.source?.snapshot_t;
-  const latest = flow.source?.is_latest ? 'latest ' : '';
-  const timestepText = timestep !== undefined ? `, ${latest}t=${timestep.toFixed(0)}` : '';
-  return `${flow.buildings.length} Incheon structures, ${flow.field.nx}x${flow.field.ny} down-sampled velocity grid${timestepText}.`;
+const VIEWPORT_MARGIN = 8;
+const DOCK_CLEARANCE = 56;
+const SLAM_MIN_SIZE: WindowSize = { width: 264, height: 248 };
+const SLAM_INITIAL_SIZE: WindowSize = { width: 300, height: 286 };
+
+function getViewportSize() {
+  return {
+    width: document.documentElement.clientWidth,
+    height: document.documentElement.clientHeight,
+  };
+}
+
+function getInitialWindowPosition(windowName: CockpitWindow): WindowPosition {
+  const viewport = getViewportSize();
+
+  if (windowName === 'map') return { x: 12, y: 12 };
+  if (windowName === 'telemetry') {
+    return {
+      x: Math.max(12, viewport.width - 350),
+      y: viewport.width < 700
+        ? Math.max(12, viewport.height - viewport.height * 0.34 - DOCK_CLEARANCE - 8)
+        : 12,
+    };
+  }
+
+  return {
+    x: Math.max(12, (viewport.width - 300) / 2),
+    y: Math.max(12, viewport.height - 360),
+  };
+}
+
+function clampWindowPosition(position: WindowPosition, element: HTMLDivElement): WindowPosition {
+  const viewport = getViewportSize();
+  const maxX = Math.max(VIEWPORT_MARGIN, viewport.width - element.offsetWidth - VIEWPORT_MARGIN);
+  const maxY = Math.max(VIEWPORT_MARGIN, viewport.height - element.offsetHeight - DOCK_CLEARANCE);
+
+  return {
+    x: Math.min(Math.max(position.x, VIEWPORT_MARGIN), maxX),
+    y: Math.min(Math.max(position.y, VIEWPORT_MARGIN), maxY),
+  };
+}
+
+function clampResizableWindowSize(size: WindowSize, position: WindowPosition): WindowSize {
+  const viewport = getViewportSize();
+  const availableWidth = Math.max(1, viewport.width - position.x - VIEWPORT_MARGIN);
+  const availableHeight = Math.max(1, viewport.height - position.y - DOCK_CLEARANCE);
+
+  return {
+    width: Math.min(Math.max(size.width, Math.min(SLAM_MIN_SIZE.width, availableWidth)), availableWidth),
+    height: Math.min(Math.max(size.height, Math.min(SLAM_MIN_SIZE.height, availableHeight)), availableHeight),
+  };
+}
+
+interface DraggableWindowProps {
+  windowName: CockpitWindow;
+  visible: boolean;
+  active: boolean;
+  onActivate: () => void;
+  children: ReactNode;
+  resizable?: boolean;
+}
+
+function DraggableWindow({ windowName, visible, active, onActivate, children, resizable = false }: DraggableWindowProps) {
+  const windowRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origin: WindowPosition;
+  } | null>(null);
+  const resizeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origin: WindowSize;
+  } | null>(null);
+  const [position, setPosition] = useState(() => getInitialWindowPosition(windowName));
+  const [size, setSize] = useState<WindowSize | null>(() => (
+    resizable ? clampResizableWindowSize(SLAM_INITIAL_SIZE, getInitialWindowPosition(windowName)) : null
+  ));
+  const positionRef = useRef(position);
+  const [dragging, setDragging] = useState(false);
+  const [resizing, setResizing] = useState(false);
+
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+
+  useEffect(() => {
+    const element = windowRef.current;
+    if (!visible || !element) return;
+
+    const clampCurrentPosition = () => {
+      const clampedPosition = clampWindowPosition(positionRef.current, element);
+      positionRef.current = clampedPosition;
+      setPosition(clampedPosition);
+      if (resizable) {
+        setSize((currentSize) => currentSize && clampResizableWindowSize(currentSize, clampedPosition));
+      }
+    };
+    const frame = window.requestAnimationFrame(clampCurrentPosition);
+    const resizeObserver = new ResizeObserver(clampCurrentPosition);
+    resizeObserver.observe(element);
+    window.addEventListener('resize', clampCurrentPosition);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', clampCurrentPosition);
+    };
+  }, [resizable, visible]);
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+
+    const target = event.target as HTMLElement;
+    if (resizable && target.closest('.cockpit-window__resize-handle')) {
+      if (!size) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onActivate();
+      resizeRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        origin: size,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setResizing(true);
+      return;
+    }
+    const titleBar = target.closest('.panel-window-title');
+    if (!titleBar || !event.currentTarget.contains(titleBar) || target.closest('button')) return;
+
+    event.preventDefault();
+    onActivate();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origin: position,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragging(true);
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const resize = resizeRef.current;
+    if (resize && resize.pointerId === event.pointerId) {
+      setSize(clampResizableWindowSize({
+        width: resize.origin.width + event.clientX - resize.startX,
+        height: resize.origin.height + event.clientY - resize.startY,
+      }, positionRef.current));
+      return;
+    }
+
+    const drag = dragRef.current;
+    const element = windowRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !element) return;
+
+    const nextPosition = clampWindowPosition({
+      x: drag.origin.x + event.clientX - drag.startX,
+      y: drag.origin.y + event.clientY - drag.startY,
+    }, element);
+    positionRef.current = nextPosition;
+    setPosition(nextPosition);
+  };
+
+  const finishDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const finishedDragging = dragRef.current?.pointerId === event.pointerId;
+    const finishedResizing = resizeRef.current?.pointerId === event.pointerId;
+    if (!finishedDragging && !finishedResizing) return;
+    if (finishedDragging) {
+      dragRef.current = null;
+      setDragging(false);
+    }
+    if (finishedResizing) {
+      resizeRef.current = null;
+      setResizing(false);
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  return (
+    <div
+      ref={windowRef}
+      className={`cockpit-window${dragging ? ' cockpit-window--dragging' : ''}${resizing ? ' cockpit-window--resizing' : ''}`}
+      style={{
+        display: visible ? undefined : 'none',
+        transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
+        zIndex: active ? 7 : 6,
+        width: size?.width,
+        height: size?.height,
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+      onLostPointerCapture={finishDrag}
+    >
+      {visible ? children : null}
+      {visible && resizable && (
+        <button
+          type="button"
+          className="cockpit-window__resize-handle"
+          aria-label="Resize rolling sensor-map window"
+          title="Drag to resize window"
+        />
+      )}
+    </div>
+  );
 }
 
 function App() {
-  const [location, setLocation] = useState<{ lat: number; lon: number }>({ lat: DEFAULT_LAT, lon: DEFAULT_LON });
-  const [flow, setFlow] = useState<FlowField2DResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('Select a district or click the map to load a 2D flow field.');
-  const [showFlowAnimation, setShowFlowAnimation] = useState(true);
-  const [simulationMode, setSimulationMode] = useState<SimulationMode>('2d');
-  const [cfdVisualization, setCfdVisualization] = useState<FlowVisualization>('both');
-  const [energyGraphScale, setEnergyGraphScale] = useState<EnergyGraphScale>('focus');
-  const [cfdWindScale, setCfdWindScale] = useState(18);
-  const [energyHistory, setEnergyHistory] = useState<number[]>(() => Array.from({ length: 90 }, () => 0));
-  const [telemetry, setTelemetry] = useState<Telemetry>({
-    droneSpeed: 0,
-    localWindSpeed: 0,
-    localWindDirDeg: 0,
-    energyRate: 0,
-    energyUsed: 0,
-    headingDeg: 0,
-    position: { x: 0, y: 0 },
-  });
-  const historyTickRef = useRef(0);
-  const requestIdRef = useRef(0);
-  const flowCacheRef = useRef<Map<string, FlowField2DResponse>>(new Map());
+  const [windows, setWindows] = useState<Record<CockpitWindow, boolean>>({ map: true, telemetry: true, slam: true });
+  const [activeWindow, setActiveWindow] = useState<CockpitWindow>('slam');
+  const { state, actions } = useUrbanFlighterData();
+  const {
+    location,
+    flow,
+    loading,
+    status,
+    backendState,
+    backendDetail,
+    showFlowAnimation,
+    showLidar,
+    followCamera,
+    simulationMode,
+    energyGraphScale,
+    energyHistory,
+    telemetry,
+  } = state;
+  const {
+    setShowFlowAnimation,
+    setShowLidar,
+    setFollowCamera,
+    setEnergyGraphScale,
+    setTelemetry,
+    handleLocationSelect,
+    handlePreset,
+    handleSimulationModeSelect,
+    handleReload,
+  } = actions;
 
-  const loadFlow = useCallback(async (lat: number, lon: number) => {
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    const cacheKey = `${lat.toFixed(5)},${lon.toFixed(5)},${GEOMETRY_RADIUS_M},${SOLVE_RADIUS_M},${DEFAULT_GRID}`;
-
-    const cachedFlow = flowCacheRef.current.get(cacheKey);
-    if (cachedFlow) {
-      setLocation({ lat, lon });
-      setFlow(cachedFlow);
-      setEnergyHistory(Array.from({ length: 90 }, () => 0));
-      setStatus(
-        `Loaded ${cachedFlow.buildings.length} cached buildings. Inlet ${cachedFlow.weather.wind_speed.toFixed(1)} m/s from ${cachedFlow.weather.wind_deg.toFixed(0)}°.`
-      );
-      return;
-    }
-
-    setLoading(true);
-    setStatus('Loading geometry and real-time wind...');
-    try {
-      const nextFlow = await fetchFlowField2D(lat, lon, GEOMETRY_RADIUS_M, SOLVE_RADIUS_M, DEFAULT_GRID);
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
-
-      if (nextFlow.buildings.length === 0) {
-        setFlow((prevFlow) => prevFlow ?? nextFlow);
-        setStatus('No buildings found for that point. Keeping the previous geometry visible.');
-        return;
-      }
-
-      flowCacheRef.current.set(cacheKey, nextFlow);
-      setFlow(nextFlow);
-      setEnergyHistory(Array.from({ length: 90 }, () => 0));
-      setStatus(
-        `Loaded ${nextFlow.buildings.length} buildings in ${GEOMETRY_RADIUS_M}m. Inlet ${nextFlow.weather.wind_speed.toFixed(1)} m/s from ${nextFlow.weather.wind_deg.toFixed(0)}°.`
-      );
-    } catch (e) {
-      if (requestId === requestIdRef.current) {
-        setStatus('Failed to load geometry/wind. Keeping the previous geometry visible.');
-      }
-      console.error(e);
-    } finally {
-      if (requestId === requestIdRef.current) {
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  const loadAeroJaxDemo = useCallback(async () => {
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    const cacheKey = 'aerojax-demo:latest:stride8';
-
-    const cachedFlow = flowCacheRef.current.get(cacheKey);
-    if (cachedFlow) {
-      setFlow(cachedFlow);
-      setEnergyHistory(Array.from({ length: 90 }, () => 0));
-      setStatus(`Loaded AeroJAX CFD demo: ${describeAeroJaxSource(cachedFlow)}`);
-      return;
-    }
-
-    setLoading(true);
-    setStatus('Loading AeroJAX raw CFD snapshot...');
-    try {
-      const nextFlow = await fetchAeroJaxDemoFlow(8);
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
-
-      flowCacheRef.current.set(cacheKey, nextFlow);
-      setFlow(nextFlow);
-      setEnergyHistory(Array.from({ length: 90 }, () => 0));
-      setStatus(`Loaded AeroJAX CFD demo: ${describeAeroJaxSource(nextFlow)}`);
-    } catch (e) {
-      if (requestId === requestIdRef.current) {
-        setStatus('Failed to load AeroJAX demo snapshot. Keeping the previous field visible.');
-      }
-      console.error(e);
-    } finally {
-      if (requestId === requestIdRef.current) {
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadFlow(DEFAULT_LAT, DEFAULT_LON);
-  }, [loadFlow]);
-
-  useEffect(() => {
-    const now = Date.now();
-    if (now - historyTickRef.current < 150) {
-      return;
-    }
-
-    setEnergyHistory((prev) => [...prev.slice(1), telemetry.energyRate]);
-    historyTickRef.current = now;
-  }, [telemetry.energyRate]);
-
-  const handleLocationSelect = (newLat: number, newLon: number) => {
-    setLocation({ lat: newLat, lon: newLon });
-    if (simulationMode !== 'real') {
-      void loadFlow(newLat, newLon);
-    }
-  };
-
-  const handlePreset = (lat: number, lon: number) => {
-    setLocation({ lat, lon });
-    if (simulationMode !== 'real') {
-      void loadFlow(lat, lon);
-    }
-  };
-
-  const handleSimulationModeSelect = (nextMode: SimulationMode) => {
-    setSimulationMode(nextMode);
-    if (nextMode === 'real') {
-      void loadAeroJaxDemo();
-      return;
-    }
-    void loadFlow(location.lat, location.lon);
-  };
-
-  const handleReload = () => {
-    if (simulationMode === 'real') {
-      void loadAeroJaxDemo();
-      return;
-    }
-    void loadFlow(location.lat, location.lon);
-  };
-
-  const viewMode: ViewMode = simulationMode === '3d' ? '3d' : '2d';
-  const isRealMode = simulationMode === 'real';
+  const viewMode: ViewMode = simulationMode === '2d' ? '2d' : '3d';
+  const isTrue3DMode = simulationMode === 'true3d';
   const buildingCount = flow?.buildings.length ?? 0;
-  const windSpeed = isRealMode ? telemetry.localWindSpeed : flow?.weather.wind_speed ?? telemetry.localWindSpeed;
+  const windSpeed = flow?.weather.wind_speed ?? telemetry.localWindSpeed;
   const modelStatus = loading ? 'SYNCING' : flow ? 'LIVE' : 'STANDBY';
-  const solverLabel = isRealMode ? 'AEROJAX CFD' : 'CG DRAG MODEL';
-  const modeLabel = isRealMode ? 'REAL CFD' : `${viewMode.toUpperCase()} VIEW`;
-  const cfdLayerLabel = cfdVisualization === 'both' ? 'COLOR + STREAM' : cfdVisualization.toUpperCase();
+  const backendLabel = backendState === 'connected' ? 'BACKEND OK' : backendState === 'checking' ? 'BACKEND CHECK' : 'BACKEND OFF';
+  const solverLabel = isTrue3DMode ? 'TRUE 3D U/V/W' : 'CFD-LITE B GRID';
+  const modeLabel = isTrue3DMode ? 'TRUE 3D WIND' : simulationMode === '3d' ? '3D LITE' : '2D';
+  const setWindowVisible = (windowName: CockpitWindow, visible: boolean) => {
+    setWindows((current) => ({ ...current, [windowName]: visible }));
+    if (visible) setActiveWindow(windowName);
+  };
 
   return (
     <div className="app-shell">
@@ -191,208 +285,94 @@ function App() {
         <TopDownGame
           flow={flow}
           showFlowAnimation={showFlowAnimation}
-          flowVisualization={isRealMode ? cfdVisualization : 'arrows'}
-          windScale={isRealMode ? cfdWindScale : 1}
+          flowVisualization="arrows"
+          showLidar={showLidar}
           onTelemetry={setTelemetry}
         />
       ) : (
-        <Simulation3D flow={flow} showFlowAnimation={showFlowAnimation} onTelemetry={setTelemetry} />
-      )}
-
-      <header className="command-bar">
-        <div className="command-title">
-          <span>Urban Flighter</span>
-          <strong>Drag-Aware Drone Simulator</strong>
-        </div>
-        <div className="command-pills" aria-label="Simulation status">
-          <span data-state={modelStatus.toLowerCase()}>{modelStatus}</span>
-          <span>{modeLabel}</span>
-          <span>{solverLabel}</span>
-          {isRealMode && <span>{cfdLayerLabel}</span>}
-          <span>{buildingCount} STRUCTURES</span>
-          <span>{windSpeed.toFixed(1)} M/S WIND</span>
-          <span>{telemetry.energyRate.toFixed(1)} U/S BURN</span>
-        </div>
-      </header>
-
-      <aside className="panel panel-map">
-        <div className="panel-eyebrow">Region Selector</div>
-        <h1>Urban Flighter {isRealMode ? 'CFD' : viewMode.toUpperCase()}</h1>
-        <div className="mode-selector" aria-label="Simulation mode">
-          <label className={simulationMode === '2d' ? 'active' : ''}>
-            <input
-              type="checkbox"
-              checked={simulationMode === '2d'}
-              onChange={() => handleSimulationModeSelect('2d')}
-            />
-            <span>
-              <strong>2D</strong>
-              <small>CG domain</small>
-            </span>
-          </label>
-          <label className={simulationMode === '3d' ? 'active' : ''}>
-            <input
-              type="checkbox"
-              checked={simulationMode === '3d'}
-              onChange={() => handleSimulationModeSelect('3d')}
-            />
-            <span>
-              <strong>3D</strong>
-              <small>Map + CG model</small>
-            </span>
-          </label>
-          <label className={simulationMode === 'real' ? 'active real' : 'real'}>
-            <input
-              type="checkbox"
-              checked={simulationMode === 'real'}
-              onChange={() => handleSimulationModeSelect('real')}
-            />
-            <span>
-              <strong>For real?</strong>
-              <small>AeroJAX CFD</small>
-            </span>
-          </label>
-        </div>
-        <div className="map-container-wrapper">
-          <LocationPicker
-            initialLat={location.lat}
-            initialLon={location.lon}
-            onLocationSelect={handleLocationSelect}
-          />
-        </div>
-        <div className="city-presets">
-          <button type="button" onClick={() => handlePreset(40.7128, -74.0060)} disabled={isRealMode}>NYC</button>
-          <button type="button" onClick={() => handlePreset(48.8566, 2.3522)} disabled={isRealMode}>Paris</button>
-          <button type="button" onClick={() => handlePreset(35.6762, 139.6503)} disabled={isRealMode}>Tokyo</button>
-          <button type="button" onClick={() => handlePreset(DEFAULT_LAT, DEFAULT_LON)} disabled={isRealMode}>Inha</button>
-        </div>
-        <div className="coords">
-          <div>
-            <span>Lat</span>
-            <strong>{location.lat.toFixed(4)}</strong>
-          </div>
-          <div>
-            <span>Lon</span>
-            <strong>{location.lon.toFixed(4)}</strong>
-          </div>
-        </div>
-        <button type="button" className="reload-btn" onClick={handleReload} disabled={loading}>
-          {loading ? 'Solving...' : isRealMode ? 'Reload AeroJAX Field' : 'Reload Flow'}
-        </button>
-        <p className="status-bar">{status}</p>
-      </aside>
-
-      <aside className="panel panel-hud">
-        <div className="panel-eyebrow">Aero Command</div>
-        <label className="flow-toggle">
-          <input
-            type="checkbox"
-            checked={showFlowAnimation}
-            onChange={(event) => setShowFlowAnimation(event.target.checked)}
-          />
-          <span>{isRealMode ? 'CFD Layer' : viewMode === '2d' ? 'Flow Animation' : 'Camera Follow'}</span>
-        </label>
-        {isRealMode && (
-          <div className="cfd-layer-control" aria-label="CFD visualization">
-            <button
-              type="button"
-              className={cfdVisualization === 'streamlines' ? 'active' : ''}
-              onClick={() => setCfdVisualization('streamlines')}
-            >
-              Stream
-            </button>
-            <button
-              type="button"
-              className={cfdVisualization === 'colormap' ? 'active' : ''}
-              onClick={() => setCfdVisualization('colormap')}
-            >
-              Color
-            </button>
-            <button
-              type="button"
-              className={cfdVisualization === 'both' ? 'active' : ''}
-              onClick={() => setCfdVisualization('both')}
-            >
-              Both
-            </button>
-          </div>
-        )}
-        {isRealMode && (
-          <div className="cfd-wind-scale">
-            <div>
-              <span>CFD Wind Scale</span>
-              <strong>x{cfdWindScale.toFixed(1)}</strong>
-            </div>
-            <input
-              type="range"
-              min="1"
-              max="30"
-              step="1"
-              value={cfdWindScale}
-              onChange={(event) => setCfdWindScale(Number(event.target.value))}
-            />
-          </div>
-        )}
-        <div className="hud-grid">
-          <div className="metric-card">
-            <span>Drone Speed</span>
-            <strong>{telemetry.droneSpeed.toFixed(1)} m/s</strong>
-          </div>
-          <div className="metric-card">
-            <span>{isRealMode ? 'Scaled Wind' : 'Local Wind'}</span>
-            <strong>{telemetry.localWindSpeed.toFixed(1)} m/s</strong>
-          </div>
-          <div className="metric-card">
-            <span>Wind Dir</span>
-            <strong>{telemetry.localWindDirDeg.toFixed(0)}°</strong>
-          </div>
-          <div className="metric-card">
-            <span>Heading</span>
-            <strong>{telemetry.headingDeg.toFixed(0)}°</strong>
-          </div>
-          <div className="metric-card wide">
-            <span>Energy Burn</span>
-            <strong>{telemetry.energyRate.toFixed(1)} u/s</strong>
-          </div>
-          <div className="metric-card wide accent">
-            <span>Total Energy</span>
-            <strong>{telemetry.energyUsed.toFixed(0)} u</strong>
-          </div>
-        </div>
-        <EnergyGraph
-          history={energyHistory}
-          scale={isRealMode ? energyGraphScale : 'absolute'}
-          adjustable={isRealMode}
-          onScaleChange={setEnergyGraphScale}
+        <Simulation3D
+          flow={flow}
+          showFlowAnimation={showFlowAnimation}
+          onTelemetry={setTelemetry}
+          followCamera={followCamera}
+          showLidar={showLidar}
+          true3DWind={isTrue3DMode}
+          onLidarTelemetry={(lidar) => setTelemetry((previous) => ({ ...previous, lidar: lidar ?? undefined }))}
         />
-        <MissionIntelligence
+      )}
+      <CommandBar
+        modelStatus={modelStatus}
+        backendState={backendState}
+        backendLabel={backendLabel}
+        modeLabel={modeLabel}
+        solverLabel={solverLabel}
+        buildingCount={buildingCount}
+        windSpeed={windSpeed}
+        energyRate={telemetry.energyRate}
+      />
+
+      <DraggableWindow windowName="map" visible={windows.map} active={activeWindow === 'map'} onActivate={() => setActiveWindow('map')}>
+        <RegionPanel
+          location={location}
+          simulationMode={simulationMode}
+          viewMode={viewMode}
+          backendLabel={backendLabel}
+          backendDetail={backendDetail}
+          loading={loading}
+          status={status}
+          isTrue3DMode={isTrue3DMode}
+          onClose={() => setWindowVisible('map', false)}
+          onLocationSelect={handleLocationSelect}
+          onPreset={handlePreset}
+          onModeSelect={handleSimulationModeSelect}
+          onReload={handleReload}
+        />
+      </DraggableWindow>
+      <DraggableWindow windowName="telemetry" visible={windows.telemetry} active={activeWindow === 'telemetry'} onActivate={() => setActiveWindow('telemetry')}>
+        <HudPanel
+          viewMode={viewMode}
           flow={flow}
           telemetry={telemetry}
           energyHistory={energyHistory}
-          viewMode={viewMode}
+          showFlowAnimation={showFlowAnimation}
+          showLidar={showLidar}
+          followCamera={followCamera}
+          energyGraphScale={energyGraphScale}
+          onClose={() => setWindowVisible('telemetry', false)}
+          onShowFlowAnimationChange={setShowFlowAnimation}
+          onShowLidarChange={setShowLidar}
+          onFollowCameraChange={setFollowCamera}
+          onEnergyGraphScaleChange={setEnergyGraphScale}
         />
-        <div className="legend">
-          {viewMode === '2d' ? (
-            <>
-              <p>Controls: `WASD` moves directly in screen directions.</p>
-              <p>{isRealMode ? 'AeroJAX velocity grid drives local wind, wake regions, and energy burn.' : 'Screen stays north-up. Real-time wind only changes inlet flow.'}</p>
-              <p>{isRealMode ? 'Color shows velocity magnitude; streamlines trace the CFD vector field.' : 'Dense arrows show the local flow direction and magnitude.'}</p>
-              <p>{isRealMode ? `Raw CFD is scaled by x${cfdWindScale.toFixed(1)} for the flight energy scenario.` : 'Flow animation toggle controls the moving particle layer.'}</p>
-            </>
+      </DraggableWindow>
+      <DraggableWindow windowName="slam" visible={windows.slam} active={activeWindow === 'slam'} onActivate={() => setActiveWindow('slam')} resizable>
+        <div className="slam-window">
+          <div className="panel-window-title panel-window-title--dark panel-window-title--draggable" title="Drag to move window">
+            <span>Rolling Sensor Map <small>⠿ Move</small></span>
+            <button type="button" onPointerDown={(event) => event.stopPropagation()} onClick={() => setWindowVisible('slam', false)} aria-label="Hide rolling sensor-map window">×</button>
+          </div>
+          {viewMode === '3d' ? (
+            <LocalReturnsRadar lidar={telemetry.lidar} currentPose={telemetry.displayPose} enabled={showLidar} compact />
           ) : (
-            <>
-              <p>Controls: `WASD` flies forward/turns, arrow keys control pitch.</p>
-              <p>3D uses the same building footprint and inlet wind data as 2D.</p>
-              <p>Flow animation toggle switches camera follow on/off.</p>
-              <p>Drag, energy, arrows, and contour are CG model approximations.</p>
-            </>
+            <LocalReturns2D lidar={telemetry.lidar} currentPose={telemetry.displayPose} enabled={showLidar} headingDeg={telemetry.headingDeg} />
           )}
-          <p>Geometry {flow?.domain.geometry_radius_m.toFixed(0) ?? '--'}m, solver {flow?.domain.solve_radius_m.toFixed(0) ?? '--'}m.</p>
-          <p>
-            Solver: {flow?.weather.wind_speed.toFixed(1) ?? '--'} m/s from {flow?.weather.wind_deg.toFixed(0) ?? '--'}°
-          </p>
         </div>
-      </aside>
+      </DraggableWindow>
+
+      <nav className="window-dock" aria-label="Cockpit windows">
+        {(['map', 'telemetry', 'slam'] as CockpitWindow[]).map((windowName) => (
+          <button
+            key={windowName}
+            type="button"
+            className={windows[windowName] ? 'active' : ''}
+            aria-pressed={windows[windowName]}
+            onClick={() => setWindowVisible(windowName, !windows[windowName])}
+          >
+            <span aria-hidden="true">{windows[windowName] ? '−' : '+'}</span>
+            {windowName === 'map' ? 'Map / Mode' : windowName === 'telemetry' ? 'Telemetry / Controls' : 'Sensor Map'}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

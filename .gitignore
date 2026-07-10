@@ -13,7 +13,13 @@ backend/venv/
 # Logs
 *.log
 
+# Local agent/debug artifacts
+.tars/
+.omo/
+.debug-journal.md
+
 # Generated data / local caches
 cache/
 backend/cache/
+results/
 AeroJAX_map_test2/

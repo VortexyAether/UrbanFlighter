@@ -1,0 +1,671 @@
+{
+  "aggregate": {
+    "controller": "multi_agent_wind_aware_astar_pd_with_separation",
+    "n_drones": 6,
+    "success_count": 6,
+    "all_success": true,
+    "total_collisions": 0,
+    "total_boundary_violations": 0,
+    "swept_building_hits": 0,
+    "collision_validation": "exact swept segment check against building prisms, margin 0.75m",
+    "total_energy_relative_airspeed_l2": 4895.072580892918,
+    "total_path_length_m": 551.3681732442597,
+    "max_steps_used": 44,
+    "min_pairwise_separation_m": 1.078510182653687,
+    "near_miss_count_sep_lt_10m": 56,
+    "energy_model": "sum over drones,t ||v_ground - w_local(x,y,z,t)||^2 * dt",
+    "note": "RL-style multi-agent rollout generator; policy is deterministic baseline, not trained MARL yet.",
+    "mission_sampling": "deterministic_cross_city_templates",
+    "seed": 13,
+    "policy_had_privileged_flow_access": false,
+    "lat": 37.497942,
+    "lon": 127.027621,
+    "radius_m": 100.0,
+    "world_source": "UrbanWorld.toy_city fallback; Gangnam OSM regeneration blocked by network",
+    "source_limitation": "Overpass was unavailable in the sandbox, so this public replay is regenerated from embedded toy-city building prisms for exact collision validation.",
+    "satellite_tile": "/data/multi_drone_gangnam_v3/satellite_center_tile.jpg",
+    "satellite_tile_url": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/17/50789/111785",
+    "metrics_json": "/data/multi_drone_gangnam_v3/urban_flighter_multi_drone_metrics.json",
+    "trajectories_json": "/data/multi_drone_gangnam_v3/urban_flighter_multi_drone_trajectories.json",
+    "building_count": 5,
+    "source_elements": 5
+  },
+  "drones": [
+    {
+      "success": true,
+      "steps": 44,
+      "sim_time_s": 11.0,
+      "path_length_m": 106.79601798958332,
+      "energy_relative_airspeed_l2": 535.8319709008836,
+      "collisions": 0,
+      "boundary_violations": 0,
+      "separation_violations": 22,
+      "min_building_clearance_m": 8.054246538150707,
+      "min_pairwise_separation_m": 2.4959090894286144,
+      "final_distance_m": 3.868743221937039,
+      "return": 274.97722425893875,
+      "reward_terms_total": {
+        "progress": 191.65710702803895,
+        "path_cost": -1.0679601798958334,
+        "time_cost": -0.8800000000000004,
+        "energy_cost": -8.037479563513255,
+        "collision_cost": 0.0,
+        "boundary_cost": 0.0,
+        "separation_cost": -6.694443025691137,
+        "goal_bonus": 100.0
+      },
+      "policy_had_privileged_flow_access": false,
+      "drone_id": "drone_1",
+      "controller": "multi_agent_wind_aware_astar_pd_with_separation",
+      "waypoint_count": 2,
+      "start": [
+        10.0,
+        12.0,
+        52.0
+      ],
+      "goal": [
+        90.0,
+        88.0,
+        52.0
+      ],
+      "world": {
+        "bounds": [
+          0.0,
+          100.0,
+          0.0,
+          100.0,
+          0.0,
+          60.0
+        ],
+        "building_count": 5,
+        "buildings": [
+          {
+            "center": [
+              25.0,
+              35.0
+            ],
+            "size": [
+              16.0,
+              28.0
+            ],
+            "height_m": 34.0
+          },
+          {
+            "center": [
+              48.0,
+              52.0
+            ],
+            "size": [
+              18.0,
+              18.0
+            ],
+            "height_m": 45.0
+          },
+          {
+            "center": [
+              72.0,
+              32.0
+            ],
+            "size": [
+              14.0,
+              24.0
+            ],
+            "height_m": 28.0
+          },
+          {
+            "center": [
+              65.0,
+              72.0
+            ],
+            "size": [
+              22.0,
+              14.0
+            ],
+            "height_m": 38.0
+          },
+          {
+            "center": [
+              34.0,
+              76.0
+            ],
+            "size": [
+              14.0,
+              18.0
+            ],
+            "height_m": 24.0
+          }
+        ]
+      }
+    },
+    {
+      "success": true,
+      "steps": 43,
+      "sim_time_s": 10.75,
+      "path_length_m": 104.37638225087495,
+      "energy_relative_airspeed_l2": 840.6186043144296,
+      "collisions": 0,
+      "boundary_violations": 0,
+      "separation_violations": 20,
+      "min_building_clearance_m": 6.007894170523004,
+      "min_pairwise_separation_m": 1.1846801526830673,
+      "final_distance_m": 3.2108459724408793,
+      "return": 262.7909178536388,
+      "reward_terms_total": {
+        "progress": 187.68489258224582,
+        "path_cost": -1.0437638225087493,
+        "time_cost": -0.8600000000000004,
+        "energy_cost": -12.609279064716446,
+        "collision_cost": 0.0,
+        "boundary_cost": 0.0,
+        "separation_cost": -10.380931841381827,
+        "goal_bonus": 100.0
+      },
+      "policy_had_privileged_flow_access": false,
+      "drone_id": "drone_2",
+      "controller": "multi_agent_wind_aware_astar_pd_with_separation",
+      "waypoint_count": 2,
+      "start": [
+        12.0,
+        88.0,
+        52.0
+      ],
+      "goal": [
+        88.0,
+        12.0,
+        52.0
+      ],
+      "world": {
+        "bounds": [
+          0.0,
+          100.0,
+          0.0,
+          100.0,
+          0.0,
+          60.0
+        ],
+        "building_count": 5,
+        "buildings": [
+          {
+            "center": [
+              25.0,
+              35.0
+            ],
+            "size": [
+              16.0,
+              28.0
+            ],
+            "height_m": 34.0
+          },
+          {
+            "center": [
+              48.0,
+              52.0
+            ],
+            "size": [
+              18.0,
+              18.0
+            ],
+            "height_m": 45.0
+          },
+          {
+            "center": [
+              72.0,
+              32.0
+            ],
+            "size": [
+              14.0,
+              24.0
+            ],
+            "height_m": 28.0
+          },
+          {
+            "center": [
+              65.0,
+              72.0
+            ],
+            "size": [
+              22.0,
+              14.0
+            ],
+            "height_m": 38.0
+          },
+          {
+            "center": [
+              34.0,
+              76.0
+            ],
+            "size": [
+              14.0,
+              18.0
+            ],
+            "height_m": 24.0
+          }
+        ]
+      }
+    },
+    {
+      "success": true,
+      "steps": 33,
+      "sim_time_s": 8.25,
+      "path_length_m": 80.80926765674796,
+      "energy_relative_airspeed_l2": 884.7045815851709,
+      "collisions": 0,
+      "boundary_violations": 0,
+      "separation_violations": 19,
+      "min_building_clearance_m": 7.48206994064693,
+      "min_pairwise_separation_m": 2.836778074816612,
+      "final_distance_m": 3.416459184441104,
+      "return": 222.0422415409294,
+      "reward_terms_total": {
+        "progress": 145.05037346800606,
+        "path_cost": -0.8080926765674797,
+        "time_cost": -0.6600000000000003,
+        "energy_cost": -13.270568723777565,
+        "collision_cost": 0.0,
+        "boundary_cost": 0.0,
+        "separation_cost": -8.269470526731531,
+        "goal_bonus": 100.0
+      },
+      "policy_had_privileged_flow_access": false,
+      "drone_id": "drone_3",
+      "controller": "multi_agent_wind_aware_astar_pd_with_separation",
+      "waypoint_count": 2,
+      "start": [
+        50.0,
+        8.0,
+        52.0
+      ],
+      "goal": [
+        50.0,
+        92.0,
+        52.0
+      ],
+      "world": {
+        "bounds": [
+          0.0,
+          100.0,
+          0.0,
+          100.0,
+          0.0,
+          60.0
+        ],
+        "building_count": 5,
+        "buildings": [
+          {
+            "center": [
+              25.0,
+              35.0
+            ],
+            "size": [
+              16.0,
+              28.0
+            ],
+            "height_m": 34.0
+          },
+          {
+            "center": [
+              48.0,
+              52.0
+            ],
+            "size": [
+              18.0,
+              18.0
+            ],
+            "height_m": 45.0
+          },
+          {
+            "center": [
+              72.0,
+              32.0
+            ],
+            "size": [
+              14.0,
+              24.0
+            ],
+            "height_m": 28.0
+          },
+          {
+            "center": [
+              65.0,
+              72.0
+            ],
+            "size": [
+              22.0,
+              14.0
+            ],
+            "height_m": 38.0
+          },
+          {
+            "center": [
+              34.0,
+              76.0
+            ],
+            "size": [
+              14.0,
+              18.0
+            ],
+            "height_m": 24.0
+          }
+        ]
+      }
+    },
+    {
+      "success": true,
+      "steps": 33,
+      "sim_time_s": 8.25,
+      "path_length_m": 81.18016812821757,
+      "energy_relative_airspeed_l2": 353.4150280495548,
+      "collisions": 0,
+      "boundary_violations": 0,
+      "separation_violations": 14,
+      "min_building_clearance_m": 7.015964276360286,
+      "min_pairwise_separation_m": 1.8680107944307085,
+      "final_distance_m": 2.8620359879293837,
+      "return": 231.05264572748695,
+      "reward_terms_total": {
+        "progress": 146.04833522172711,
+        "path_cost": -0.8118016812821758,
+        "time_cost": -0.6600000000000003,
+        "energy_cost": -5.301225420743321,
+        "collision_cost": 0.0,
+        "boundary_cost": 0.0,
+        "separation_cost": -8.222662392214687,
+        "goal_bonus": 100.0
+      },
+      "policy_had_privileged_flow_access": false,
+      "drone_id": "drone_4",
+      "controller": "multi_agent_wind_aware_astar_pd_with_separation",
+      "waypoint_count": 2,
+      "start": [
+        8.0,
+        50.0,
+        52.0
+      ],
+      "goal": [
+        92.0,
+        50.0,
+        52.0
+      ],
+      "world": {
+        "bounds": [
+          0.0,
+          100.0,
+          0.0,
+          100.0,
+          0.0,
+          60.0
+        ],
+        "building_count": 5,
+        "buildings": [
+          {
+            "center": [
+              25.0,
+              35.0
+            ],
+            "size": [
+              16.0,
+              28.0
+            ],
+            "height_m": 34.0
+          },
+          {
+            "center": [
+              48.0,
+              52.0
+            ],
+            "size": [
+              18.0,
+              18.0
+            ],
+            "height_m": 45.0
+          },
+          {
+            "center": [
+              72.0,
+              32.0
+            ],
+            "size": [
+              14.0,
+              24.0
+            ],
+            "height_m": 28.0
+          },
+          {
+            "center": [
+              65.0,
+              72.0
+            ],
+            "size": [
+              22.0,
+              14.0
+            ],
+            "height_m": 38.0
+          },
+          {
+            "center": [
+              34.0,
+              76.0
+            ],
+            "size": [
+              14.0,
+              18.0
+            ],
+            "height_m": 24.0
+          }
+        ]
+      }
+    },
+    {
+      "success": true,
+      "steps": 37,
+      "sim_time_s": 9.25,
+      "path_length_m": 92.88729527741958,
+      "energy_relative_airspeed_l2": 668.8502241185884,
+      "collisions": 0,
+      "boundary_violations": 0,
+      "separation_violations": 24,
+      "min_building_clearance_m": 5.354936081061695,
+      "min_pairwise_separation_m": 3.8592017071021005,
+      "final_distance_m": 3.813079147717565,
+      "return": 244.07676189284314,
+      "reward_terms_total": {
+        "progress": 165.8708200680292,
+        "path_cost": -0.9288729527741959,
+        "time_cost": -0.7400000000000003,
+        "energy_cost": -10.032753361778823,
+        "collision_cost": 0.0,
+        "boundary_cost": 0.0,
+        "separation_cost": -10.092431860633106,
+        "goal_bonus": 100.0
+      },
+      "policy_had_privileged_flow_access": false,
+      "drone_id": "drone_5",
+      "controller": "multi_agent_wind_aware_astar_pd_with_separation",
+      "waypoint_count": 2,
+      "start": [
+        25.0,
+        10.0,
+        52.0
+      ],
+      "goal": [
+        78.0,
+        90.0,
+        52.0
+      ],
+      "world": {
+        "bounds": [
+          0.0,
+          100.0,
+          0.0,
+          100.0,
+          0.0,
+          60.0
+        ],
+        "building_count": 5,
+        "buildings": [
+          {
+            "center": [
+              25.0,
+              35.0
+            ],
+            "size": [
+              16.0,
+              28.0
+            ],
+            "height_m": 34.0
+          },
+          {
+            "center": [
+              48.0,
+              52.0
+            ],
+            "size": [
+              18.0,
+              18.0
+            ],
+            "height_m": 45.0
+          },
+          {
+            "center": [
+              72.0,
+              32.0
+            ],
+            "size": [
+              14.0,
+              24.0
+            ],
+            "height_m": 28.0
+          },
+          {
+            "center": [
+              65.0,
+              72.0
+            ],
+            "size": [
+              22.0,
+              14.0
+            ],
+            "height_m": 38.0
+          },
+          {
+            "center": [
+              34.0,
+              76.0
+            ],
+            "size": [
+              14.0,
+              18.0
+            ],
+            "height_m": 24.0
+          }
+        ]
+      }
+    },
+    {
+      "success": true,
+      "steps": 37,
+      "sim_time_s": 9.25,
+      "path_length_m": 85.31904194141617,
+      "energy_relative_airspeed_l2": 1611.6521719242915,
+      "collisions": 0,
+      "boundary_violations": 0,
+      "separation_violations": 22,
+      "min_building_clearance_m": 6.784283302879317,
+      "min_pairwise_separation_m": 1.078510182653687,
+      "final_distance_m": 3.3742293289422753,
+      "return": 214.680853058072,
+      "reward_terms_total": {
+        "progress": 153.38647625842466,
+        "path_cost": -0.853190419414162,
+        "time_cost": -0.7400000000000003,
+        "energy_cost": -24.174782578864377,
+        "collision_cost": 0.0,
+        "boundary_cost": 0.0,
+        "separation_cost": -12.93765020207414,
+        "goal_bonus": 100.0
+      },
+      "policy_had_privileged_flow_access": false,
+      "drone_id": "drone_6",
+      "controller": "multi_agent_wind_aware_astar_pd_with_separation",
+      "waypoint_count": 2,
+      "start": [
+        90.0,
+        30.0,
+        52.0
+      ],
+      "goal": [
+        12.0,
+        72.0,
+        52.0
+      ],
+      "world": {
+        "bounds": [
+          0.0,
+          100.0,
+          0.0,
+          100.0,
+          0.0,
+          60.0
+        ],
+        "building_count": 5,
+        "buildings": [
+          {
+            "center": [
+              25.0,
+              35.0
+            ],
+            "size": [
+              16.0,
+              28.0
+            ],
+            "height_m": 34.0
+          },
+          {
+            "center": [
+              48.0,
+              52.0
+            ],
+            "size": [
+              18.0,
+              18.0
+            ],
+            "height_m": 45.0
+          },
+          {
+            "center": [
+              72.0,
+              32.0
+            ],
+            "size": [
+              14.0,
+              24.0
+            ],
+            "height_m": 28.0
+          },
+          {
+            "center": [
+              65.0,
+              72.0
+            ],
+            "size": [
+              22.0,
+              14.0
+            ],
+            "height_m": 38.0
+          },
+          {
+            "center": [
+              34.0,
+              76.0
+            ],
+            "size": [
+              14.0,
+              18.0
+            ],
+            "height_m": 24.0
+          }
+        ]
+      }
+    }
+  ]
+}

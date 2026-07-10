@@ -1,4 +1,124 @@
-const API_URL = 'http://localhost:8000';
+export const API_URL = 'http://localhost:8000';
+
+export interface BackendHealth {
+    status: string;
+    service?: string;
+}
+
+type JsonMetricValue = string | number | boolean | null | number[] | Record<string, number>;
+
+export interface PolicyFrame {
+    step: number;
+    t_s?: number;
+    drone_id?: string;
+    position: number[];
+    velocity?: number[];
+    action?: number[];
+    policy_observation: number[];
+    reward?: number;
+    reward_terms?: Record<string, number>;
+    terminated?: boolean;
+    truncated?: boolean;
+    policy_had_privileged_flow_access: boolean;
+}
+
+export interface RLEnvironmentSpec {
+    status: string;
+    policy_status: string;
+    environment: {
+        id: string;
+        gymnasium_installed: boolean;
+        reward_terms: string[];
+        cost_metrics: string[];
+        policy_observation_contract: {
+            fields: string[];
+            source: string;
+            privileged_flow_access: boolean;
+            hidden_dynamics: string;
+            forbidden: string[];
+        };
+        observation_space: {
+            shape: number[];
+            provider: string;
+        };
+        action_space: {
+            shape: number[];
+            provider: string;
+        };
+    };
+    policy_observation_summary: string;
+    policy_had_privileged_flow_access: boolean;
+    data_sources: {
+        world: string;
+        wind: {
+            kind: string;
+            cfd_claim: string;
+        };
+        hidden_training_dynamics: string;
+        real_cfd_eval_hook: string;
+    };
+}
+
+export interface RLBaselineResponse {
+    status: string;
+    policy_label: string;
+    environment_id: string;
+    seed: number;
+    max_steps: number;
+    n_drones: number;
+    randomize_missions?: boolean;
+    policy_had_privileged_flow_access: boolean;
+    metrics: {
+        success: boolean;
+        success_count?: number;
+        steps: number;
+        return: number;
+        path_length_m: number;
+        energy_relative_airspeed_l2: number;
+        collisions: number;
+        separation_violations?: number;
+        min_building_clearance_m: number;
+        min_pairwise_separation_m?: number;
+        final_distance_m: number;
+        reward_terms_total: Record<string, number>;
+        controller: string;
+        policy_status: string;
+        waypoint_count: number;
+    };
+    cost_metrics: {
+        collisions: number;
+        separation_violations?: number;
+        min_building_clearance_m: number;
+        min_pairwise_separation_m?: number;
+        energy_relative_airspeed_l2: number;
+        path_length_m?: number;
+        boundary_violations?: number;
+        swept_building_hits?: number;
+        final_distance_m: number;
+    };
+    missions: Array<{
+        drone_id: string;
+        start: number[];
+        goal: number[];
+    }>;
+    drones?: Array<{
+        drone_id: string;
+        metrics: Record<string, JsonMetricValue>;
+        trajectory: PolicyFrame[];
+        waypoints: number[][];
+    }>;
+    trajectory: PolicyFrame[];
+    data_sources: {
+        world: {
+            building_count: number;
+        };
+        wind: {
+            kind: string;
+            cfd_claim: string;
+        };
+        hidden_training_dynamics: string;
+    };
+}
 
 export interface BuildingData {
     height: number;
@@ -100,6 +220,37 @@ export const fetchFlowField2D = async (
 
     if (!response.ok) {
         throw new Error('Failed to fetch 2D flow field');
+    }
+
+    return await response.json();
+};
+
+export const fetchBackendHealth = async (): Promise<BackendHealth> => {
+    const response = await fetch(`${API_URL}/health`);
+
+    if (!response.ok) {
+        throw new Error(`Backend health check failed: ${response.status}`);
+    }
+
+    return await response.json();
+};
+
+export const fetchRLEnvironmentSpec = async (): Promise<RLEnvironmentSpec> => {
+    const response = await fetch(`${API_URL}/api/rl/spec`);
+
+    if (!response.ok) {
+        throw new Error(`RL environment spec failed: ${response.status}`);
+    }
+
+    return await response.json();
+};
+
+export const fetchRLBaseline = async (seed: number = 7, maxSteps: number = 300, nDrones: number = 4): Promise<RLBaselineResponse> => {
+    const params = new URLSearchParams({ seed: String(seed), max_steps: String(maxSteps), n_drones: String(nDrones) });
+    const response = await fetch(`${API_URL}/api/rl/baseline?${params.toString()}`);
+
+    if (!response.ok) {
+        throw new Error(`RL baseline rollout failed: ${response.status}`);
     }
 
     return await response.json();

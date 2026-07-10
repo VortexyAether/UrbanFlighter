@@ -10,9 +10,10 @@ import uvicorn
 
 from services.geometry import fetch_buildings
 from services.aerojax_demo import build_aerojax_demo_flow
-from services.flow_2d import wind_dir_to_inlet_vector
+from services.flow_2d import compute_cfd_lite_b_flow_2d, wind_dir_to_inlet_vector
 from services.wind import get_real_weather, generate_global_wind_params
 from services.simulation_manager import SimulationManager
+from urban_flighter_rl.rollout import env_spec_payload, run_deterministic_baseline_rollout
 
 app = FastAPI(title="Urban Drone Challenge API")
 
@@ -83,6 +84,25 @@ def get_weather_data(lat: float, lon: float):
     }
 
 
+@app.get("/rl/spec")
+@app.get("/api/rl/spec")
+def get_rl_environment_spec():
+    return env_spec_payload()
+
+
+@app.get("/rl/baseline")
+@app.get("/api/rl/baseline")
+def get_rl_baseline(seed: int = 7, max_steps: int = 300, n_drones: int = 4, randomize_missions: bool = True):
+    bounded_steps = min(max(int(max_steps), 1), 1200)
+    bounded_drones = min(max(int(n_drones), 1), 12)
+    return run_deterministic_baseline_rollout(
+        seed=int(seed),
+        max_steps=bounded_steps,
+        n_drones=bounded_drones,
+        randomize_missions=bool(randomize_missions),
+    )
+
+
 @app.post("/simulations")
 def create_simulation(req: SimulationRequest):
     rec = sim_manager.submit(req.model_dump())
@@ -129,6 +149,7 @@ def create_flow_field_2d(req: FlowField2DRequest):
     buildings = fetch_buildings(req.lat, req.lon, req.geometry_radius_m)
     weather = get_real_weather(req.lat, req.lon) if req.use_real_weather else {"wind_speed": 5.0, "wind_deg": 0.0}
     inlet = wind_dir_to_inlet_vector(float(weather.get("wind_speed", 5.0)), float(weather.get("wind_deg", 0.0)))
+    field = compute_cfd_lite_b_flow_2d(buildings, inlet, req.solve_radius_m, req.grid_size_m)
     return {
         "buildings": buildings,
         "weather": {
@@ -145,24 +166,10 @@ def create_flow_field_2d(req: FlowField2DRequest):
             "geometry_radius_m": float(req.geometry_radius_m),
             "solve_radius_m": float(req.solve_radius_m),
         },
-        "field": {
-            "nx": 0,
-            "ny": 0,
-            "cell_size_m": float(req.grid_size_m),
-            "bounds": {
-                "min_x": float(-req.solve_radius_m),
-                "max_x": float(req.solve_radius_m),
-                "min_y": float(-req.solve_radius_m),
-                "max_y": float(req.solve_radius_m),
-            },
-            "ux": [],
-            "uy": [],
-            "mask": [],
-            "stats": {
-                "mean_speed_mps": float(np.linalg.norm(inlet)),
-                "max_speed_mps": float(np.linalg.norm(inlet)),
-                "blocked_fraction": 0.0,
-            },
+        "field": field,
+        "source": {
+            "kind": "POTENTIAL-FLOW CFD-LITE B: streamfunction grid + wall damping/wake correction",
+            "model": "potential-flow-cfd-lite-wall-damping-wake",
         },
     }
 

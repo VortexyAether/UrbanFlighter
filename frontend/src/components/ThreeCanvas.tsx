@@ -20,7 +20,7 @@ export default function ThreeCanvas({ children }: ThreeCanvasProps) {
                 background: '#111316'
             }}
         >
-            <PerspectiveCamera makeDefault position={[0, 100, 200]} fov={60} />
+            <PerspectiveCamera makeDefault position={[0, 112, 215]} fov={50} />
 
             {/* Atmosphere */}
             <color attach="background" args={['#111316']} />

@@ -1,43 +1,53 @@
 import React, { useRef } from 'react';
-import { useThree, useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 interface CameraFollowProps {
     target: THREE.Vector3;
-    yaw: number;   // Aircraft heading
-    pitch: number; // Aircraft pitch
+    yaw: number;
+    pitch: number;
     enabled: boolean;
+    distance?: number;
+    height?: number;
+    lookAhead?: number;
 }
 
-const CameraFollow: React.FC<CameraFollowProps> = ({ target, yaw, pitch, enabled }) => {
+const CameraFollow: React.FC<CameraFollowProps> = ({
+    target,
+    yaw,
+    pitch,
+    enabled,
+    distance = 68,
+    height = 28,
+    lookAhead = 118,
+}) => {
     const { camera } = useThree();
     const smoothTarget = useRef(new THREE.Vector3(0, 50, 0));
+    const smoothCamera = useRef(new THREE.Vector3(0, 68, 68));
 
     useFrame(() => {
         if (!enabled) return;
 
-        // Calculate camera position behind aircraft based on its yaw and pitch
-        const distance = 50; // Distance behind aircraft
-        const height = 30;   // Height above aircraft
+        const forward = new THREE.Vector3(
+            -Math.sin(yaw) * Math.cos(pitch),
+            Math.sin(pitch),
+            -Math.cos(yaw) * Math.cos(pitch)
+        ).normalize();
 
-        // Camera position rotates with aircraft (yaw and pitch)
-        const cameraOffset = new THREE.Vector3(
-            Math.sin(yaw) * Math.cos(pitch) * distance,  // X offset
-            height - Math.sin(pitch) * distance * 0.5,   // Y offset (affected by pitch)
-            Math.cos(yaw) * Math.cos(pitch) * distance   // Z offset
-        );
+        const side = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forward).normalize();
+        const cameraOffset = forward.clone().multiplyScalar(-distance)
+            .add(new THREE.Vector3(0, height, 0))
+            .add(side.multiplyScalar(2.0));
 
-        const desiredPosition = new THREE.Vector3(
-            target.x + cameraOffset.x,
-            target.y + cameraOffset.y,
-            target.z + cameraOffset.z
-        );
+        const desiredPosition = target.clone().add(cameraOffset);
+        const desiredLookAt = target.clone()
+            .add(forward.clone().multiplyScalar(lookAhead))
+            .add(new THREE.Vector3(0, 3.5, 0));
 
-        // Smooth camera movement (reduced from 0.1 to 0.05 for smoother motion)
-        camera.position.lerp(desiredPosition, 0.05);
+        smoothCamera.current.lerp(desiredPosition, 0.085);
+        smoothTarget.current.lerp(desiredLookAt, 0.12);
 
-        // Smooth lookAt target to prevent jittery rotation
-        smoothTarget.current.lerp(target, 0.1);
+        camera.position.copy(smoothCamera.current);
         camera.lookAt(smoothTarget.current);
     });
 
