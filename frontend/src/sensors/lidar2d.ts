@@ -69,6 +69,19 @@ function raySegmentDistance(
   return distance >= 0 && edgeFraction >= 0 && edgeFraction <= 1 ? distance : null;
 }
 
+function rayDomainExitDistance(
+  origin: Lidar2DPoint,
+  direction: Lidar2DPoint,
+  bounds: Lidar2DBounds,
+) {
+  const candidates: number[] = [];
+  if (direction.x > 1e-12) candidates.push((bounds.max_x - origin.x) / direction.x);
+  else if (direction.x < -1e-12) candidates.push((bounds.min_x - origin.x) / direction.x);
+  if (direction.y > 1e-12) candidates.push((bounds.max_y - origin.y) / direction.y);
+  else if (direction.y < -1e-12) candidates.push((bounds.min_y - origin.y) / direction.y);
+  return Math.min(...candidates.filter((distance) => distance >= 0));
+}
+
 function validateConfig(config: Lidar2DConfig) {
   if (!Number.isFinite(config.maxRange) || config.maxRange <= 0) {
     throw new Error('2D LiDAR maxRange must be a positive finite number.');
@@ -91,6 +104,7 @@ export function scanLidar2D(
   buildings: readonly BuildingData[],
   config: Lidar2DConfig = DEFAULT_LIDAR_2D_CONFIG,
   localDirections = createLidar2DLocalDirections(config),
+  bounds?: Lidar2DBounds,
 ): Lidar2DScan {
   validateConfig(config);
   if (localDirections.length !== config.horizontalSamples) {
@@ -104,8 +118,11 @@ export function scanLidar2D(
       x: directionLocal.x * cosHeading - directionLocal.y * sinHeading,
       y: directionLocal.x * sinHeading + directionLocal.y * cosHeading,
     };
-    let distance = config.maxRange;
-    let hit = false;
+    const boundaryDistance = bounds
+      ? rayDomainExitDistance(pose.position, directionWorld, bounds)
+      : Number.POSITIVE_INFINITY;
+    let distance = Math.min(config.maxRange, boundaryDistance);
+    let hit = boundaryDistance <= config.maxRange;
 
     for (const building of buildings) {
       const footprint = building.footprint;

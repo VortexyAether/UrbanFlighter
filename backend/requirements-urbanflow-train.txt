@@ -1,0 +1,3 @@
+# Optional only: the NumPy UrbanFlow core and baseline evaluation do not need these.
+gymnasium>=1.1,<2
+stable-baselines3>=2.6,<3

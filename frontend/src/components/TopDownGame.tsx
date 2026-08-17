@@ -10,6 +10,15 @@ import {
   summarizeLidar2DScan,
   type Lidar2DScan,
 } from '../sensors/lidar2d';
+import {
+  consumeFlight2DFixedSteps,
+  isFlight2DPositionBlocked,
+  stepFlight2DMotion,
+} from '../simulation/flight2dMotion';
+import {
+  eastNorthToCompassBearingDeg,
+  mapAngleToCompassBearingDeg,
+} from '../utils/bearings';
 
 interface Vec2 {
   x: number;
@@ -69,13 +78,11 @@ interface Streamline {
   speed: number;
 }
 
-const MAX_SPEED = 32;
-const THRUST = 34;
-const DRAG = 0.9;
-const DRONE_RADIUS = 12;
+const LEGACY_DRONE_RADIUS_M = 12;
 const VIEW_RADIUS_M = 200;
 const PARTICLE_COUNT = 900;
 const LIDAR_INTERVAL_S = 0.1;
+const FLIGHT_CONTROL_CODES = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -525,7 +532,7 @@ function resetWorld(flow: FlowField2DResponse | null): WorldState {
   const found = selectLidar2DSpawn(
     flow.field.bounds,
     flow.buildings,
-    DRONE_RADIUS + 4,
+    collisionRadiusForFlow(flow) + 4,
     DEFAULT_LIDAR_2D_CONFIG,
   );
 
@@ -535,6 +542,10 @@ function resetWorld(flow: FlowField2DResponse | null): WorldState {
     heading: 0,
     energyUsed: 0,
   };
+}
+
+function collisionRadiusForFlow(flow: FlowField2DResponse | null) {
+  return flow?.live_scenario?.collision_lidar_semantics.agent_radius_m ?? LEGACY_DRONE_RADIUS_M;
 }
 
 export default function TopDownGame({
@@ -548,6 +559,7 @@ export default function TopDownGame({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
+  const physicsAccumulatorRef = useRef(0);
   const worldRef = useRef<WorldState>(resetWorld(flow));
   const keysRef = useRef<Set<string>>(new Set());
   const particlesRef = useRef<FlowParticle[]>([]);
@@ -559,7 +571,11 @@ export default function TopDownGame({
 
   const buildings = useMemo(() => flow?.buildings ?? [], [flow]);
   const obstacles = useMemo(() => buildObstacles(buildings), [buildings]);
-  const lidarDirections = useMemo(() => createLidar2DLocalDirections(DEFAULT_LIDAR_2D_CONFIG), []);
+  const collisionRadius = collisionRadiusForFlow(flow);
+  const lidarDirections = useMemo(
+    () => showLidar ? createLidar2DLocalDirections(DEFAULT_LIDAR_2D_CONFIG) : [],
+    [showLidar],
+  );
   const bounds = flow?.field.bounds;
   const speedColormap = useMemo(() => (flow ? buildSpeedColormap(flow) : null), [flow]);
   const viewportBounds = useMemo(() => {
@@ -624,17 +640,44 @@ export default function TopDownGame({
   }, [flow, viewportBounds]);
 
   useEffect(() => {
+    const isInteractiveTarget = (target: EventTarget | null) => {
+      if (!(target instanceof Element)) return false;
+      if (target instanceof HTMLElement && target.isContentEditable) return true;
+      return target.closest([
+        'a', 'area[href]', 'button', 'input', 'label', 'select', 'textarea',
+        'summary', 'iframe', 'object', 'embed', 'audio[controls]', 'video[controls]',
+        '[contenteditable]:not([contenteditable="false"])',
+        '[role="button"]', '[role="link"]', '[role="checkbox"]', '[role="radio"]',
+        '[role="switch"]', '[role="textbox"]', '[role="combobox"]',
+        '[role="slider"]', '[role="spinbutton"]', '[role="menuitem"]',
+        '[tabindex]:not([tabindex="-1"])',
+      ].join(',')) !== null;
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (!FLIGHT_CONTROL_CODES.has(event.code) || isInteractiveTarget(event.target)) return;
+      event.preventDefault();
       keysRef.current.add(event.code);
     };
     const handleKeyUp = (event: KeyboardEvent) => {
+      if (!FLIGHT_CONTROL_CODES.has(event.code)) return;
+      if (!isInteractiveTarget(event.target)) event.preventDefault();
       keysRef.current.delete(event.code);
+    };
+    const clearControls = () => keysRef.current.clear();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') clearControls();
     };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', clearControls);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', clearControls);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearControls();
     };
   }, []);
 
@@ -654,6 +697,8 @@ export default function TopDownGame({
       return;
     }
     flowLayerRef.current = flowLayer;
+    lastTimeRef.current = 0;
+    physicsAccumulatorRef.current = 0;
 
     const resize = () => {
       const ratio = window.devicePixelRatio || 1;
@@ -682,19 +727,22 @@ export default function TopDownGame({
       const worldPoint = canvasToWorld(clickPoint, canvas.clientWidth, canvas.clientHeight, viewportBounds);
 
       if (
-        worldPoint.x < viewportBounds.min_x || worldPoint.x > viewportBounds.max_x
-        || worldPoint.y < viewportBounds.min_y || worldPoint.y > viewportBounds.max_y
+        worldPoint.x < viewportBounds.min_x + collisionRadius
+        || worldPoint.x > viewportBounds.max_x - collisionRadius
+        || worldPoint.y < viewportBounds.min_y + collisionRadius
+        || worldPoint.y > viewportBounds.max_y - collisionRadius
       ) {
         return;
       }
 
-      const blocked = obstacles.some((obstacle) => pointInPolygon(worldPoint, obstacle.footprint));
+      const blocked = isFlight2DPositionBlocked(worldPoint, obstacles, collisionRadius);
       if (blocked) {
         return;
       }
 
       worldRef.current.position = worldPoint;
       worldRef.current.velocity = { x: 0, y: 0 };
+      physicsAccumulatorRef.current = 0;
       trailRef.current = [worldPoint];
     };
 
@@ -702,7 +750,8 @@ export default function TopDownGame({
 
     const frame = (time: number) => {
       animationRef.current = window.requestAnimationFrame(frame);
-      const dt = Math.min(0.033, (time - lastTimeRef.current) / 1000 || 0.016);
+      const frameDelta = (time - lastTimeRef.current) / 1000 || 1 / 60;
+      const renderDelta = Math.min(0.05, Math.max(0, frameDelta));
       lastTimeRef.current = time;
 
       const width = canvas.clientWidth;
@@ -727,52 +776,43 @@ export default function TopDownGame({
         x: (keysRef.current.has('KeyD') ? 1 : 0) - (keysRef.current.has('KeyA') ? 1 : 0),
         y: (keysRef.current.has('KeyW') ? 1 : 0) - (keysRef.current.has('KeyS') ? 1 : 0),
       };
-      const moveDir = normalize(input);
-      world.heading = length(moveDir) > 0.1 ? Math.atan2(moveDir.y, moveDir.x) : world.heading;
-
-      const wind = scaledWind(sampleField(flow, obstacles, world.position), windScale);
-      world.velocity.x += moveDir.x * THRUST * dt;
-      world.velocity.y += moveDir.y * THRUST * dt;
-      world.velocity.x += wind.x * 0.22 * dt;
-      world.velocity.y += wind.y * 0.22 * dt;
-      world.velocity.x *= DRAG;
-      world.velocity.y *= DRAG;
-
-      const speed = length(world.velocity);
-      if (speed > MAX_SPEED) {
-        const dir = normalize(world.velocity);
-        world.velocity.x = dir.x * MAX_SPEED;
-        world.velocity.y = dir.y * MAX_SPEED;
-      }
-
-      const nextPosition = {
-        x: world.position.x + world.velocity.x * dt * 16,
-        y: world.position.y + world.velocity.y * dt * 16,
-      };
-
-      const hitsBuilding = obstacles.some((obstacle) => pointInPolygon(nextPosition, obstacle.footprint));
-      if (!hitsBuilding) {
-        world.position = nextPosition;
-      } else {
-        world.velocity.x *= -0.18;
-        world.velocity.y *= -0.18;
-      }
-
-      world.position.x = clamp(world.position.x, viewportBounds.min_x + DRONE_RADIUS, viewportBounds.max_x - DRONE_RADIUS);
-      world.position.y = clamp(world.position.y, viewportBounds.min_y + DRONE_RADIUS, viewportBounds.max_y - DRONE_RADIUS);
-
-      const energyRate = computeEnergyRate(world.velocity, wind);
-      world.energyUsed += energyRate * dt;
+      let wind = scaledWind(sampleField(flow, obstacles, world.position), windScale);
+      let energyRate = computeEnergyRate(world.velocity, wind);
+      const fixedStepResult = consumeFlight2DFixedSteps(
+        physicsAccumulatorRef.current,
+        frameDelta,
+        (fixedDelta) => {
+          wind = scaledWind(sampleField(flow, obstacles, world.position), windScale);
+          const nextMotion = stepFlight2DMotion(
+            world,
+            input,
+            wind,
+            obstacles,
+            viewportBounds,
+            fixedDelta,
+            { collisionRadius },
+          );
+          world.position = nextMotion.position;
+          world.velocity = nextMotion.velocity;
+          world.heading = nextMotion.heading;
+          energyRate = computeEnergyRate(world.velocity, wind);
+          world.energyUsed += energyRate * fixedDelta;
+        },
+      );
+      physicsAccumulatorRef.current = fixedStepResult.accumulatorSeconds;
+      wind = scaledWind(sampleField(flow, obstacles, world.position), windScale);
+      energyRate = computeEnergyRate(world.velocity, wind);
 
       if (showLidar) {
-        lidarClockRef.current += dt;
+        lidarClockRef.current += fixedStepResult.simulatedSeconds;
         if (lidarClockRef.current >= LIDAR_INTERVAL_S) {
-          lidarClockRef.current = 0;
+          lidarClockRef.current %= LIDAR_INTERVAL_S;
           const scan = scanLidar2D(
             { position: world.position, heading: world.heading },
             buildings,
             DEFAULT_LIDAR_2D_CONFIG,
             lidarDirections,
+            viewportBounds,
           );
           lidarScanRef.current = scan;
           lidarTelemetryRef.current = summarizeLidar2DScan(scan, {
@@ -785,8 +825,11 @@ export default function TopDownGame({
           });
         }
       } else {
-        lidarScanRef.current = null;
-        lidarTelemetryRef.current = null;
+        if (lidarScanRef.current || lidarTelemetryRef.current) {
+          lidarScanRef.current = null;
+          lidarTelemetryRef.current = null;
+        }
+        lidarClockRef.current = LIDAR_INTERVAL_S;
       }
 
       const trail = trailRef.current;
@@ -823,9 +866,9 @@ export default function TopDownGame({
         for (const particle of particlesRef.current) {
           const local = scaledWind(sampleField(flow, obstacles, particle.position), windScale);
           const mag = length(local);
-          particle.position.x += local.x * dt * 8.5;
-          particle.position.y += local.y * dt * 8.5;
-          particle.age += dt;
+          particle.position.x += local.x * renderDelta * 8.5;
+          particle.position.y += local.y * renderDelta * 8.5;
+          particle.age += renderDelta;
 
           const outOfBounds = (
             particle.position.x < viewportBounds.min_x || particle.position.x > viewportBounds.max_x
@@ -1019,17 +1062,13 @@ export default function TopDownGame({
       context.font = '600 13px ui-sans-serif, system-ui';
       context.fillText('N', northOrigin.x - 5, northOrigin.y - 36);
 
-      const windDirRad = Math.atan2(wind.y, wind.x);
-      let windDirDeg = 90 - (windDirRad * 180) / Math.PI;
-      if (windDirDeg < 0) windDirDeg += 360;
-
       onTelemetry({
         droneSpeed: length(world.velocity),
         localWindSpeed: length(wind),
-        localWindDirDeg: windDirDeg,
+        localWindDirDeg: eastNorthToCompassBearingDeg(wind.x, wind.y),
         energyRate,
         energyUsed: world.energyUsed,
-        headingDeg: ((world.heading * 180) / Math.PI + 360) % 360,
+        headingDeg: mapAngleToCompassBearingDeg(world.heading),
         position: { ...world.position },
         displayPose: {
           x: world.position.x,
@@ -1056,6 +1095,7 @@ export default function TopDownGame({
   }, [
     bounds,
     buildings,
+    collisionRadius,
     fieldPreview,
     flow,
     flowVisualization,

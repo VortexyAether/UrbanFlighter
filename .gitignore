@@ -23,3 +23,10 @@ cache/
 backend/cache/
 results/
 AeroJAX_map_test2/
+
+# TeX intermediates
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.synctex.gz

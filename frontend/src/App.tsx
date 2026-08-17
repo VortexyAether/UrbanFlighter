@@ -1,53 +1,49 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 import Simulation3D from './components/Simulation3D';
 import TopDownGame from './components/TopDownGame';
 import { type ViewMode } from './appModel';
+import type { DroneControlPreset } from './simulation/flight3dControls';
 import CommandBar from './components/CommandBar';
 import HudPanel from './components/HudPanel';
 import LocalReturns2D from './components/LocalReturns2D';
 import LocalReturnsRadar from './components/LocalReturnsRadar';
 import RegionPanel from './components/RegionPanel';
+import UrbanFlowEpisodeInspector from './components/UrbanFlowEpisodeInspector';
 import { useUrbanFlighterData } from './hooks/useUrbanFlighterData';
 import './App.css';
 
-type CockpitWindow = 'map' | 'telemetry' | 'slam';
+type CockpitWindow = 'map' | 'telemetry' | 'slam' | 'inspector';
 type WindowPosition = { x: number; y: number };
 type WindowSize = { width: number; height: number };
 
 const VIEWPORT_MARGIN = 8;
 const DOCK_CLEARANCE = 56;
+const COMPACT_LAYOUT_BREAKPOINT = 700;
 const SLAM_MIN_SIZE: WindowSize = { width: 264, height: 248 };
 const SLAM_INITIAL_SIZE: WindowSize = { width: 300, height: 286 };
+const INSPECTOR_MIN_SIZE: WindowSize = { width: 620, height: 500 };
+const INSPECTOR_INITIAL_SIZE: WindowSize = { width: 980, height: 740 };
+const RESIZE_STEP = 8;
+const RESIZE_LARGE_STEP = 24;
+
+interface CockpitLayout {
+  positions: Record<CockpitWindow, WindowPosition>;
+  slamSize: WindowSize;
+  inspectorSize: WindowSize;
+}
 
 function getViewportSize() {
   return {
     width: document.documentElement.clientWidth,
     height: document.documentElement.clientHeight,
-  };
-}
-
-function getInitialWindowPosition(windowName: CockpitWindow): WindowPosition {
-  const viewport = getViewportSize();
-
-  if (windowName === 'map') return { x: 12, y: 12 };
-  if (windowName === 'telemetry') {
-    return {
-      x: Math.max(12, viewport.width - 350),
-      y: viewport.width < 700
-        ? Math.max(12, viewport.height - viewport.height * 0.34 - DOCK_CLEARANCE - 8)
-        : 12,
-    };
-  }
-
-  return {
-    x: Math.max(12, (viewport.width - 300) / 2),
-    y: Math.max(12, viewport.height - 360),
   };
 }
 
@@ -62,14 +58,69 @@ function clampWindowPosition(position: WindowPosition, element: HTMLDivElement):
   };
 }
 
-function clampResizableWindowSize(size: WindowSize, position: WindowPosition): WindowSize {
-  const viewport = getViewportSize();
+function clampResizableWindowSize(
+  size: WindowSize,
+  position: WindowPosition,
+  minimumSize: WindowSize = SLAM_MIN_SIZE,
+  viewport = getViewportSize(),
+): WindowSize {
   const availableWidth = Math.max(1, viewport.width - position.x - VIEWPORT_MARGIN);
   const availableHeight = Math.max(1, viewport.height - position.y - DOCK_CLEARANCE);
 
   return {
-    width: Math.min(Math.max(size.width, Math.min(SLAM_MIN_SIZE.width, availableWidth)), availableWidth),
-    height: Math.min(Math.max(size.height, Math.min(SLAM_MIN_SIZE.height, availableHeight)), availableHeight),
+    width: Math.min(Math.max(size.width, Math.min(minimumSize.width, availableWidth)), availableWidth),
+    height: Math.min(Math.max(size.height, Math.min(minimumSize.height, availableHeight)), availableHeight),
+  };
+}
+
+function resizableMinimum(windowName: CockpitWindow) {
+  return windowName === 'inspector' ? INSPECTOR_MIN_SIZE : SLAM_MIN_SIZE;
+}
+
+function getDefaultCockpitLayout(viewport = getViewportSize()): CockpitLayout {
+  const mapPosition: WindowPosition = { x: 12, y: 12 };
+  const telemetryPosition: WindowPosition = {
+    x: Math.max(12, viewport.width - 350),
+    y: 12,
+  };
+  const slamPosition: WindowPosition = {
+    x: Math.max(12, (viewport.width - SLAM_INITIAL_SIZE.width) / 2),
+    y: Math.max(12, viewport.height - 360),
+  };
+  const inspectorPosition: WindowPosition = {
+    x: Math.max(VIEWPORT_MARGIN, (viewport.width - INSPECTOR_INITIAL_SIZE.width) / 2),
+    y: Math.max(VIEWPORT_MARGIN, (viewport.height - INSPECTOR_INITIAL_SIZE.height - DOCK_CLEARANCE) / 2),
+  };
+
+  if (viewport.width < COMPACT_LAYOUT_BREAKPOINT) {
+    const panelWidth = Math.min(320, Math.max(1, viewport.width - 24));
+    const usableHeight = Math.max(1, viewport.height - DOCK_CLEARANCE - VIEWPORT_MARGIN * 2);
+    const verticalStep = usableHeight / 3;
+
+    mapPosition.x = VIEWPORT_MARGIN;
+    mapPosition.y = VIEWPORT_MARGIN;
+    telemetryPosition.x = Math.max(VIEWPORT_MARGIN, viewport.width - panelWidth - 12);
+    telemetryPosition.y = Math.round(VIEWPORT_MARGIN + verticalStep);
+    slamPosition.x = Math.max(VIEWPORT_MARGIN, (viewport.width - SLAM_INITIAL_SIZE.width) / 2);
+    slamPosition.y = Math.round(VIEWPORT_MARGIN + verticalStep * 2);
+    inspectorPosition.x = VIEWPORT_MARGIN;
+    inspectorPosition.y = VIEWPORT_MARGIN;
+  }
+
+  return {
+    positions: {
+      map: mapPosition,
+      telemetry: telemetryPosition,
+      slam: slamPosition,
+      inspector: inspectorPosition,
+    },
+    slamSize: clampResizableWindowSize(SLAM_INITIAL_SIZE, slamPosition, SLAM_MIN_SIZE, viewport),
+    inspectorSize: clampResizableWindowSize(
+      INSPECTOR_INITIAL_SIZE,
+      inspectorPosition,
+      INSPECTOR_MIN_SIZE,
+      viewport,
+    ),
   };
 }
 
@@ -78,11 +129,20 @@ interface DraggableWindowProps {
   visible: boolean;
   active: boolean;
   onActivate: () => void;
+  resetToken: number;
   children: ReactNode;
   resizable?: boolean;
 }
 
-function DraggableWindow({ windowName, visible, active, onActivate, children, resizable = false }: DraggableWindowProps) {
+function DraggableWindow({
+  windowName,
+  visible,
+  active,
+  onActivate,
+  resetToken,
+  children,
+  resizable = false,
+}: DraggableWindowProps) {
   const windowRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
     pointerId: number;
@@ -96,15 +156,25 @@ function DraggableWindow({ windowName, visible, active, onActivate, children, re
     startY: number;
     origin: WindowSize;
   } | null>(null);
-  const [position, setPosition] = useState(() => getInitialWindowPosition(windowName));
-  const [size, setSize] = useState<WindowSize | null>(() => (
-    resizable ? clampResizableWindowSize(SLAM_INITIAL_SIZE, getInitialWindowPosition(windowName)) : null
-  ));
+  const [position, setPosition] = useState(() => getDefaultCockpitLayout().positions[windowName]);
+  const [size, setSize] = useState<WindowSize | null>(() => {
+    if (!resizable) return null;
+    const layout = getDefaultCockpitLayout();
+    return windowName === 'inspector' ? layout.inspectorSize : layout.slamSize;
+  });
   const positionRef = useRef(position);
+  const [appliedResetToken, setAppliedResetToken] = useState(resetToken);
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState(false);
 
-  useEffect(() => {
+  if (appliedResetToken !== resetToken) {
+    const layout = getDefaultCockpitLayout();
+    setAppliedResetToken(resetToken);
+    setPosition(layout.positions[windowName]);
+    if (resizable) setSize(windowName === 'inspector' ? layout.inspectorSize : layout.slamSize);
+  }
+
+  useLayoutEffect(() => {
     positionRef.current = position;
   }, [position]);
 
@@ -117,7 +187,11 @@ function DraggableWindow({ windowName, visible, active, onActivate, children, re
       positionRef.current = clampedPosition;
       setPosition(clampedPosition);
       if (resizable) {
-        setSize((currentSize) => currentSize && clampResizableWindowSize(currentSize, clampedPosition));
+        setSize((currentSize) => currentSize && clampResizableWindowSize(
+          currentSize,
+          clampedPosition,
+          resizableMinimum(windowName),
+        ));
       }
     };
     const frame = window.requestAnimationFrame(clampCurrentPosition);
@@ -130,7 +204,7 @@ function DraggableWindow({ windowName, visible, active, onActivate, children, re
       resizeObserver.disconnect();
       window.removeEventListener('resize', clampCurrentPosition);
     };
-  }, [resizable, visible]);
+  }, [resizable, visible, windowName]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -172,7 +246,7 @@ function DraggableWindow({ windowName, visible, active, onActivate, children, re
       setSize(clampResizableWindowSize({
         width: resize.origin.width + event.clientX - resize.startX,
         height: resize.origin.height + event.clientY - resize.startY,
-      }, positionRef.current));
+      }, positionRef.current, resizableMinimum(windowName)));
       return;
     }
 
@@ -205,6 +279,41 @@ function DraggableWindow({ windowName, visible, active, onActivate, children, re
     }
   };
 
+  const handleResizeKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (!size) return;
+
+    const step = event.shiftKey ? RESIZE_LARGE_STEP : RESIZE_STEP;
+    let widthDelta = 0;
+    let heightDelta = 0;
+
+    switch (event.key) {
+      case 'ArrowLeft':
+        widthDelta = -step;
+        break;
+      case 'ArrowRight':
+        widthDelta = step;
+        break;
+      case 'ArrowUp':
+        heightDelta = -step;
+        break;
+      case 'ArrowDown':
+        heightDelta = step;
+        break;
+      default:
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onActivate();
+    setSize((currentSize) => currentSize && clampResizableWindowSize({
+      width: currentSize.width + widthDelta,
+      height: currentSize.height + heightDelta,
+    }, positionRef.current, resizableMinimum(windowName)));
+  };
+
+  const resizeHelpId = `${windowName}-window-resize-help`;
+
   return (
     <div
       ref={windowRef}
@@ -221,23 +330,42 @@ function DraggableWindow({ windowName, visible, active, onActivate, children, re
       onPointerUp={finishDrag}
       onPointerCancel={finishDrag}
       onLostPointerCapture={finishDrag}
+      onPointerDownCapture={onActivate}
+      onFocusCapture={onActivate}
     >
       {visible ? children : null}
       {visible && resizable && (
-        <button
-          type="button"
-          className="cockpit-window__resize-handle"
-          aria-label="Resize rolling sensor-map window"
-          title="Drag to resize window"
-        />
+        <>
+          <span id={resizeHelpId} className="visually-hidden">
+            Drag the corner to resize. With the handle focused, use Left and Right Arrow to change width,
+            or Up and Down Arrow to change height. Hold Shift for larger steps.
+          </span>
+          <button
+            type="button"
+            className="cockpit-window__resize-handle"
+            aria-label={`Resize ${windowName === 'inspector' ? 'Gym Episode Inspector' : 'rolling sensor-map'} window`}
+            aria-describedby={resizeHelpId}
+            aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Shift+ArrowLeft Shift+ArrowRight Shift+ArrowUp Shift+ArrowDown"
+            title="Drag to resize. Arrow keys adjust by 8 px; hold Shift for 24 px."
+            onKeyDown={handleResizeKeyDown}
+          />
+        </>
       )}
     </div>
   );
 }
 
 function App() {
-  const [windows, setWindows] = useState<Record<CockpitWindow, boolean>>({ map: true, telemetry: true, slam: true });
+  const [windows, setWindows] = useState<Record<CockpitWindow, boolean>>({
+    map: true,
+    telemetry: true,
+    slam: true,
+    inspector: false,
+  });
   const [activeWindow, setActiveWindow] = useState<CockpitWindow>('slam');
+  const [layoutResetToken, setLayoutResetToken] = useState(0);
+  const [controlPreset, setControlPreset] = useState<DroneControlPreset>('arcade');
+  const [presentationMode, setPresentationMode] = useState(true);
   const { state, actions } = useUrbanFlighterData();
   const {
     location,
@@ -270,9 +398,9 @@ function App() {
   const isTrue3DMode = simulationMode === 'true3d';
   const buildingCount = flow?.buildings.length ?? 0;
   const windSpeed = flow?.weather.wind_speed ?? telemetry.localWindSpeed;
-  const modelStatus = loading ? 'SYNCING' : flow ? 'LIVE' : 'STANDBY';
+  const modelStatus = loading ? 'SYNCING' : flow ? 'READY' : 'STANDBY';
   const backendLabel = backendState === 'connected' ? 'BACKEND OK' : backendState === 'checking' ? 'BACKEND CHECK' : 'BACKEND OFF';
-  const solverLabel = isTrue3DMode ? 'TRUE 3D U/V/W' : 'CFD-LITE B GRID';
+  const solverLabel = isTrue3DMode ? 'U/V/W VISUAL OVERLAY' : 'CFD-LITE B GRID';
   const modeLabel = isTrue3DMode ? 'TRUE 3D WIND' : simulationMode === '3d' ? '3D LITE' : '2D';
   const setWindowVisible = (windowName: CockpitWindow, visible: boolean) => {
     setWindows((current) => ({ ...current, [windowName]: visible }));
@@ -292,11 +420,17 @@ function App() {
       ) : (
         <Simulation3D
           flow={flow}
+          selectedLocation={location}
           showFlowAnimation={showFlowAnimation}
           onTelemetry={setTelemetry}
           followCamera={followCamera}
+          onFollowCameraChange={setFollowCamera}
           showLidar={showLidar}
           true3DWind={isTrue3DMode}
+          controlPreset={controlPreset}
+          onControlPresetChange={setControlPreset}
+          presentationMode={presentationMode}
+          onPresentationModeChange={setPresentationMode}
           onLidarTelemetry={(lidar) => setTelemetry((previous) => ({ ...previous, lidar: lidar ?? undefined }))}
         />
       )}
@@ -311,7 +445,7 @@ function App() {
         energyRate={telemetry.energyRate}
       />
 
-      <DraggableWindow windowName="map" visible={windows.map} active={activeWindow === 'map'} onActivate={() => setActiveWindow('map')}>
+      <DraggableWindow windowName="map" visible={windows.map} active={activeWindow === 'map'} onActivate={() => setActiveWindow('map')} resetToken={layoutResetToken}>
         <RegionPanel
           location={location}
           simulationMode={simulationMode}
@@ -328,24 +462,30 @@ function App() {
           onReload={handleReload}
         />
       </DraggableWindow>
-      <DraggableWindow windowName="telemetry" visible={windows.telemetry} active={activeWindow === 'telemetry'} onActivate={() => setActiveWindow('telemetry')}>
+      <DraggableWindow windowName="telemetry" visible={windows.telemetry} active={activeWindow === 'telemetry'} onActivate={() => setActiveWindow('telemetry')} resetToken={layoutResetToken}>
         <HudPanel
           viewMode={viewMode}
           flow={flow}
+          selectedLocation={location}
+          worldLoading={loading}
           telemetry={telemetry}
           energyHistory={energyHistory}
           showFlowAnimation={showFlowAnimation}
           showLidar={showLidar}
           followCamera={followCamera}
+          controlPreset={controlPreset}
+          presentationMode={presentationMode}
           energyGraphScale={energyGraphScale}
           onClose={() => setWindowVisible('telemetry', false)}
           onShowFlowAnimationChange={setShowFlowAnimation}
           onShowLidarChange={setShowLidar}
           onFollowCameraChange={setFollowCamera}
+          onControlPresetChange={setControlPreset}
+          onPresentationModeChange={setPresentationMode}
           onEnergyGraphScaleChange={setEnergyGraphScale}
         />
       </DraggableWindow>
-      <DraggableWindow windowName="slam" visible={windows.slam} active={activeWindow === 'slam'} onActivate={() => setActiveWindow('slam')} resizable>
+      <DraggableWindow windowName="slam" visible={windows.slam} active={activeWindow === 'slam'} onActivate={() => setActiveWindow('slam')} resetToken={layoutResetToken} resizable>
         <div className="slam-window">
           <div className="panel-window-title panel-window-title--dark panel-window-title--draggable" title="Drag to move window">
             <span>Rolling Sensor Map <small>⠿ Move</small></span>
@@ -358,9 +498,24 @@ function App() {
           )}
         </div>
       </DraggableWindow>
+      <DraggableWindow
+        windowName="inspector"
+        visible={windows.inspector}
+        active={activeWindow === 'inspector'}
+        onActivate={() => setActiveWindow('inspector')}
+        resetToken={layoutResetToken}
+        resizable
+      >
+        <UrbanFlowEpisodeInspector
+          flow={flow}
+          selectedLocation={location}
+          worldLoading={loading}
+          onClose={() => setWindowVisible('inspector', false)}
+        />
+      </DraggableWindow>
 
       <nav className="window-dock" aria-label="Cockpit windows">
-        {(['map', 'telemetry', 'slam'] as CockpitWindow[]).map((windowName) => (
+        {(['map', 'telemetry', 'slam', 'inspector'] as CockpitWindow[]).map((windowName) => (
           <button
             key={windowName}
             type="button"
@@ -369,9 +524,24 @@ function App() {
             onClick={() => setWindowVisible(windowName, !windows[windowName])}
           >
             <span aria-hidden="true">{windows[windowName] ? '−' : '+'}</span>
-            {windowName === 'map' ? 'Map / Mode' : windowName === 'telemetry' ? 'Telemetry / Controls' : 'Sensor Map'}
+            {windowName === 'map'
+              ? 'Map / Mode'
+              : windowName === 'telemetry'
+                ? 'Telemetry / Controls'
+                : windowName === 'slam'
+                  ? 'Sensor Map'
+                  : 'Gym Inspector'}
           </button>
         ))}
+        <button
+          type="button"
+          className="window-dock__reset"
+          aria-label="Reset cockpit window positions and resizable window sizes"
+          onClick={() => setLayoutResetToken((current) => current + 1)}
+        >
+          <span aria-hidden="true">↺</span>
+          Reset Layout
+        </button>
       </nav>
     </div>
   );

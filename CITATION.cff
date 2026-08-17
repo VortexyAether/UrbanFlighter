@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+title: Urban Flighter
+message: If you use this software, please cite the technical report.
+type: software
+authors:
+  - family-names: Jang
+    given-names: Jaewon
+    alias: VortexyAether
+license: MIT
+repository-code: https://github.com/VortexyAether/Urban_Flighter
+abstract: >
+  Honest urban-air simulator with OSM geometry, CFD-lite hidden flow,
+  policy-visible sensing, and an RL-ready but untrained Gym contract.
+preferred-citation:
+  type: report
+  title: "Urban Flighter: An Honest Urban-Air Simulator with CFD-lite Hidden Flow and Policy-Visible Sensing"
+  authors:
+    - family-names: Jang
+      given-names: Jaewon
+  year: 2026

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { getLidarJetCss, type LidarDisplayPose, type LidarTelemetry } from '../sensors/lidar';
 import { DEFAULT_LIDAR_2D_CONFIG } from '../sensors/lidar2d';
@@ -28,18 +28,27 @@ const VIEW_ZOOM_STEP = 1.25;
 export default function LocalReturns2D({ lidar, currentPose, enabled, headingDeg }: LocalReturns2DProps) {
   const [history, setHistory] = useState<{ lastLidar?: LidarTelemetry; keyframes: RollingSensorKeyframe[] }>({ keyframes: [] });
   const [viewZoom, setViewZoom] = useState(1);
-  let displayedHistory = history;
-  if (enabled && lidar && history.lastLidar !== lidar) {
-    displayedHistory = {
-      lastLidar: lidar,
-      keyframes: appendRollingSensorKeyframe(
-        history.keyframes,
-        createRollingSensorKeyframe(lidar, ROLLING_SENSOR_MAP_2D_POINTS_PER_KEYFRAME),
-      ),
+  useEffect(() => {
+    if (!enabled || !lidar) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setHistory((current) => {
+        if (current.lastLidar === lidar) return current;
+        return {
+          lastLidar: lidar,
+          keyframes: appendRollingSensorKeyframe(
+            current.keyframes,
+            createRollingSensorKeyframe(lidar, ROLLING_SENSOR_MAP_2D_POINTS_PER_KEYFRAME),
+          ),
+        };
+      });
+    });
+    return () => {
+      cancelled = true;
     };
-    setHistory(displayedHistory);
-  }
-  const { keyframes } = displayedHistory;
+  }, [enabled, lidar]);
+  const { keyframes } = history;
 
   const maxRange = lidar?.ui.maxRange ?? DEFAULT_LIDAR_2D_CONFIG.maxRange;
   const scale = (RADIUS / Math.max(1, maxRange)) * viewZoom;
@@ -117,7 +126,7 @@ export default function LocalReturns2D({ lidar, currentPose, enabled, headingDeg
         </div>
       </div>
       <div className="local-radar__footer">
-        <span>{maxRange} M · {lidar?.sampleCount ?? DEFAULT_LIDAR_2D_CONFIG.horizontalSamples} LIVE · {keyframes.length}/{ROLLING_SENSOR_MAP_KEYFRAMES} KF</span>
+        <span>{maxRange} M · {lidar?.sampleCount ?? DEFAULT_LIDAR_2D_CONFIG.horizontalSamples} RAYS/SCAN · {keyframes.length}/{ROLLING_SENSOR_MAP_KEYFRAMES} KF</span>
         <button type="button" className="local-radar__clear" onClick={() => setHistory({ lastLidar: lidar, keyframes: [] })}>CLEAR MAP</button>
       </div>
       <div className="local-slam-viewer__hint">DRAG TITLE TO MOVE · CORNER TO RESIZE · SCROLL OR BUTTONS TO ZOOM · HDG {headingDeg.toFixed(0)}° · RETURNS + DISPLAY ODOMETRY ONLY · NO WORLD POLYGONS</div>

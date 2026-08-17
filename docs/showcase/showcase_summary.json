@@ -1,0 +1,140 @@
+{
+  "case": "urban_flighter_oss_showcase_v1",
+  "policy_status": "not_trained",
+  "policy_full_flow_access": false,
+  "navier_stokes_cfd": false,
+  "real_cfd_validation_run": false,
+  "network_required": false,
+  "potential_flow": {
+    "label": "POTENTIAL-FLOW CFD-LITE",
+    "navier_stokes": false,
+    "mode": "toy_city",
+    "buildings": 5,
+    "grid": [
+      26,
+      26
+    ],
+    "iterations": 348,
+    "residual": 9.839427661972877e-05,
+    "mean_speed_mps": 4.955199722101682,
+    "max_speed_mps": 12.777243443270077,
+    "inlet_from_deg": 270.0,
+    "inlet_speed_mps": 5.0,
+    "image": "docs/showcase/potential_flow_toy/potential_flow_streamlines.png"
+  },
+  "gym_eval": {
+    "evaluation_id": "24ec026f3352e4f9",
+    "seeds": [
+      10007,
+      10009,
+      10037
+    ],
+    "max_steps": 240,
+    "metrics": {
+      "direct_goal": {
+        "episodes": 3,
+        "success_count": 0,
+        "success_rate": 0.0,
+        "collision_count": 3,
+        "collision_episode_rate": 1.0,
+        "mean_path_length_m": 23.470956884516053,
+        "mean_relative_air_speed_energy": 180.3039116492727,
+        "mean_time_s": 4.666666666666667,
+        "min_clearance_m": 0.0,
+        "mean_score": -29.96051147716169
+      },
+      "shortest_path": {
+        "episodes": 3,
+        "success_count": 3,
+        "success_rate": 1.0,
+        "collision_count": 0,
+        "collision_episode_rate": 0.0,
+        "mean_path_length_m": 142.10195840636294,
+        "mean_relative_air_speed_energy": 1235.979964372382,
+        "mean_time_s": 23.916666666666668,
+        "min_clearance_m": 1.7318158461256274,
+        "mean_score": 339.7745742157403
+      },
+      "wind_aware_inlet": {
+        "episodes": 3,
+        "success_count": 3,
+        "success_rate": 1.0,
+        "collision_count": 0,
+        "collision_episode_rate": 0.0,
+        "mean_path_length_m": 141.87754604130168,
+        "mean_relative_air_speed_energy": 1303.4103847077126,
+        "mean_time_s": 21.833333333333332,
+        "min_clearance_m": 2.03511969264774,
+        "mean_score": 339.5858160374914
+      }
+    },
+    "artifact": "docs/showcase/gym_fixture_eval.json"
+  },
+  "figures": {
+    "flow": "docs/showcase/potential_flow_toy/potential_flow_streamlines.png",
+    "trajectories": "docs/showcase/gym_fixture_trajectories.png",
+    "metrics": "docs/showcase/gym_fixture_metrics.png"
+  },
+  "one_seed_rollouts": {
+    "direct_goal": {
+      "label": "Direct goal guidance",
+      "uses_hidden_flow": false,
+      "obs_dim": 33,
+      "metrics": {
+        "schema_id": "urbanflow.episode_metrics.v1",
+        "success": 0.0,
+        "collision_count": 1.0,
+        "path_length_m": 15.650377642577999,
+        "relative_air_speed_energy": 59.05971385868306,
+        "time_s": 3.25,
+        "min_clearance_m": 0.0,
+        "score": -44.764216404690856,
+        "steps": 13.0,
+        "final_goal_distance_m": 123.95544671814594,
+        "termination_reason": "collision",
+        "actor_full_flow_access": 0.0
+      },
+      "steps": 13
+    },
+    "shortest_path": {
+      "label": "Geometry-safe shortest-path A*",
+      "uses_hidden_flow": false,
+      "obs_dim": 33,
+      "metrics": {
+        "schema_id": "urbanflow.episode_metrics.v1",
+        "success": 1.0,
+        "collision_count": 0.0,
+        "path_length_m": 160.22159444761286,
+        "relative_air_speed_energy": 673.0846113201312,
+        "time_s": 26.25,
+        "min_clearance_m": 1.931619826022768,
+        "score": 366.17858744233405,
+        "steps": 105.0,
+        "final_goal_distance_m": 2.1478460372359494,
+        "termination_reason": "success",
+        "actor_full_flow_access": 0.0
+      },
+      "steps": 105
+    },
+    "wind_aware_inlet": {
+      "label": "Wind-aware A* + inlet feed-forward",
+      "uses_hidden_flow": false,
+      "obs_dim": 33,
+      "metrics": {
+        "schema_id": "urbanflow.episode_metrics.v1",
+        "success": 1.0,
+        "collision_count": 0.0,
+        "path_length_m": 161.12193128226698,
+        "relative_air_speed_energy": 727.4364008971357,
+        "time_s": 25.0,
+        "min_clearance_m": 2.431599256794172,
+        "score": 366.02205151960084,
+        "steps": 100.0,
+        "final_goal_distance_m": 2.2127921053939965,
+        "termination_reason": "success",
+        "actor_full_flow_access": 0.0
+      },
+      "steps": 100
+    }
+  }
+}

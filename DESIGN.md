@@ -138,3 +138,19 @@ Mixed: translucent panel surfaces with borders and restrained shadows over the s
 | Border | 1px solid var(--line) | Cards, controls, panels |
 
 Depth must not distract from the flight surface. Prefer one clean panel layer and repeated metric cards over nested panels.
+
+## 8. 3D Flight Presentation
+
+The 3D modes default to a readable game presentation while retaining a neutral research view.
+
+- **Scale**: world units are metres. The quadcopter is 0.58 m across; its 1.25 m horizontal radius and retained 2.0 m vertical roof clearance form a separate research envelope and must never be implied by enlarging the mesh.
+- **Camera**: Chase is a close damped flight camera with OSM-facade clipping protection. Orbit is explicit free inspection. `C` switches modes, and both modes remain available from the HUD and Telemetry / Controls panel.
+- **Controls**: Arcade maps A/D to strafe and Q/E to yaw; Pilot swaps those roles. W/S, Space/Shift, R boost, and F brake remain common. Input acceleration/damping is smooth, while mechanics advance at a fixed 120 Hz with bounded catch-up.
+- **Atmosphere**: procedural daylight, sky, haze, fog, shadows, roof/facade material variation, vegetation, lamps, inferred road treatment, and facade/roof detail establish depth. Repeated props use bounded instancing and deterministic identity-derived placement.
+- **Wind readability**: CFD-lite paths use colored translucent lines and bright advected dashes. True 3D Wind keeps its labeled bundled U/V/W potential-flow overlay. Neither overlay changes the horizontal live-grid flight source of truth.
+
+### Presentation/mechanics separation
+
+Trees, lamps, inferred roads/markings, facade panels, rooftop units, and the free-flight beacon are non-physical scenery. They do not enter collision, LiDAR, the rolling sensor map, wind, Gym, observations, reward, APIs, or scenario hashing. The UI must always retain a concise `SCENERY ONLY` legend. Turning dressing off shows the research safety envelope and physical LiDAR cloud; it does not change physics or sensor computation.
+
+The procedural road/vegetation layer is not asserted to be real OSM road or vegetation data. Real OSM building geometry, live inlet provenance, the CFD-lite grid, metre coordinate frame, and loaded bounds remain authoritative.

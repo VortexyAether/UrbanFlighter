@@ -1,14 +1,19 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getWindVector } from '../systems/WindSystem';
 import type { BuildingData } from '../api';
+import { deterministicUnit } from '../utils/deterministicSampling';
 
 interface StreamlineParticlesProps {
     globalWindSpeed: number;
     globalWindDir: number;
     buildings: BuildingData[];
 }
+
+const STREAMLINE_COUNT = 800;
+const STREAMLINE_SAMPLE_SEED = 0x51f15e5d;
+const TUBE_RADIUS = 0.5;
 
 // Custom shader for flowing line effect
 const FlowShader = {
@@ -61,9 +66,6 @@ const StreamlineParticles: React.FC<StreamlineParticlesProps> = ({
     globalWindDir,
     buildings
 }) => {
-    const streamlineCount = 800; // Increased to 800 for even more density
-    const tubeRadius = 0.5;
-
     // Convert global wind to vector
     const globalWindVector = useMemo(() => {
         const rad = (globalWindDir * Math.PI) / 180;
@@ -74,19 +76,19 @@ const StreamlineParticles: React.FC<StreamlineParticlesProps> = ({
     const streamlines = useMemo(() => {
         const lines: THREE.CatmullRomCurve3[] = [];
 
-        for (let i = 0; i < streamlineCount; i++) {
-            // Random starting position (expanded to 1500m)
-            const angle = Math.random() * Math.PI * 2;
-            const radius = Math.random() * 1500;
+        for (let i = 0; i < STREAMLINE_COUNT; i++) {
+            // Deterministic starting position (expanded to 1500m)
+            const angle = deterministicUnit(STREAMLINE_SAMPLE_SEED, i, 0) * Math.PI * 2;
+            const radius = deterministicUnit(STREAMLINE_SAMPLE_SEED, i, 1) * 1500;
             const startPos = new THREE.Vector3(
                 Math.cos(angle) * radius,
-                5 + Math.random() * 250, // Higher ceiling
+                5 + deterministicUnit(STREAMLINE_SAMPLE_SEED, i, 2) * 250, // Higher ceiling
                 Math.sin(angle) * radius
             );
 
             // Trace wind flow
             const points: THREE.Vector3[] = [];
-            let currentPos = startPos.clone();
+            const currentPos = startPos.clone();
             const stepSize = 15;
             const numSteps = 35; // Trace longer distances
 
@@ -113,9 +115,9 @@ const StreamlineParticles: React.FC<StreamlineParticlesProps> = ({
 
     // Create streamline mesh data
     const meshes = useMemo(() => {
-        return streamlines.map((curve) => {
-            const geometry = new THREE.TubeGeometry(curve, 32, tubeRadius, 6, false);
-            const isGolden = Math.random() > 0.2;
+        return streamlines.map((curve, index) => {
+            const geometry = new THREE.TubeGeometry(curve, 32, TUBE_RADIUS, 6, false);
+            const isGolden = deterministicUnit(STREAMLINE_SAMPLE_SEED, index, 3) > 0.2;
 
             const material = new THREE.ShaderMaterial({
                 uniforms: THREE.UniformsUtils.clone(FlowShader.uniforms),
@@ -128,14 +130,21 @@ const StreamlineParticles: React.FC<StreamlineParticlesProps> = ({
 
             material.uniforms.uColor.value = isGolden ? new THREE.Color('#d4af37') : new THREE.Color('#555555');
             material.uniforms.uEmissive.value = isGolden ? new THREE.Color('#ffaa00') : new THREE.Color('#222222');
-            material.uniforms.uSpeed.value = 0.4 + Math.random() * 0.4;
-            material.uniforms.uOffset.value = Math.random();
-            material.uniforms.uLength.value = 0.15 + Math.random() * 0.2;
+            material.uniforms.uSpeed.value = 0.4 + deterministicUnit(STREAMLINE_SAMPLE_SEED, index, 4) * 0.4;
+            material.uniforms.uOffset.value = deterministicUnit(STREAMLINE_SAMPLE_SEED, index, 5);
+            material.uniforms.uLength.value = 0.15 + deterministicUnit(STREAMLINE_SAMPLE_SEED, index, 6) * 0.2;
             material.uniforms.uOpacity.value = isGolden ? 0.7 : 0.3;
 
             return { geometry, material };
         });
-    }, [streamlines, tubeRadius]);
+    }, [streamlines]);
+
+    useEffect(() => () => {
+        meshes.forEach(({ geometry, material }) => {
+            geometry.dispose();
+            material.dispose();
+        });
+    }, [meshes]);
 
     // Update uTime uniform
     useFrame(({ clock }) => {

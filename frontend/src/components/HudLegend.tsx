@@ -16,8 +16,9 @@ export default function HudLegend({ viewMode, flow }: HudLegendProps) {
         </>
       ) : (
         <>
-          <p>Controls: W/S accelerate or reverse, A/D yaw, arrows or E/Q climb and descend.</p>
+          <p>Controls: selectable Arcade (A/D strafe, Q/E yaw) or Pilot (A/D yaw, Q/E strafe); W/S drive, Space/Shift altitude, R boost, F brake, C camera.</p>
           <p>The rolling 3D sensor map uses simulator display odometry and has no loop closure or pose-graph correction.</p>
+          <p>Scenery legend: trees, lamps, road markings, rooftop detail, haze, and the free-flight beacon are deterministic presentation only—no wind, collision, LiDAR, rolling-map, Gym, observation, or reward effect.</p>
         </>
       )}
       <p>Geometry {flow?.domain.geometry_radius_m.toFixed(0) ?? '--'}m, solver {flow?.domain.solve_radius_m.toFixed(0) ?? '--'}m.</p>

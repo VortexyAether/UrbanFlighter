@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { appendBoundedSample } from '../utils/deterministicSampling';
 import './PerformancePlot.css';
 
 interface PerformancePlotProps {
@@ -6,23 +7,37 @@ interface PerformancePlotProps {
     speed: number;
 }
 
+interface PerformanceSample {
+    c: number;
+    s: number;
+}
+
+const HISTORY_CAPACITY = 400;
+const SAMPLE_INTERVAL_MS = 100;
+
+function createEmptyHistory(): PerformanceSample[] {
+    return Array.from({ length: HISTORY_CAPACITY }, () => ({ c: 0, s: 0 }));
+}
+
 const PerformancePlot: React.FC<PerformancePlotProps> = ({ consumption, speed }) => {
-    const [history, setHistory] = useState<{ c: number, s: number }[]>(
-        new Array(400).fill({ c: 0, s: 0 })
-    );
-    const lastUpdate = useRef(0);
+    const [history, setHistory] = useState<PerformanceSample[]>(createEmptyHistory);
+    const latestSample = useRef<PerformanceSample>({ c: consumption, s: speed });
 
     useEffect(() => {
-        const now = Date.now();
-        // Update only every 100ms to allow a much longer history view (40 seconds total)
-        if (now - lastUpdate.current > 100) {
-            setHistory(prev => {
-                const newHistory = [...prev.slice(1), { c: consumption, s: speed }];
-                return newHistory;
-            });
-            lastUpdate.current = now;
-        }
+        latestSample.current = { c: consumption, s: speed };
     }, [consumption, speed]);
+
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            setHistory((previous) => appendBoundedSample(
+                previous,
+                latestSample.current,
+                HISTORY_CAPACITY,
+            ));
+        }, SAMPLE_INTERVAL_MS);
+
+        return () => window.clearInterval(intervalId);
+    }, []);
 
     // Scaling helpers
     const maxC = Math.max(...history.map(h => h.c), 50);

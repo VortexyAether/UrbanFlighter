@@ -41,9 +41,10 @@ const MIN_CAMERA_DISTANCE = 155;
 const MAX_CAMERA_DISTANCE = 390;
 
 function buildCurrentPointSets(lidar: LidarTelemetry | undefined, enabled: boolean) {
+  if (!enabled || !lidar) return [EMPTY_POINT_BUFFERS, EMPTY_POINT_BUFFERS];
+
   const sets: LidarUiReturn[][] = [[], []];
-  if (enabled) lidar?.ui.returns.forEach((sample) => sets[sample.hit ? 1 : 0].push(sample));
-  if (!lidar) return [EMPTY_POINT_BUFFERS, EMPTY_POINT_BUFFERS];
+  lidar.ui.returns.forEach((sample) => sets[sample.hit ? 1 : 0].push(sample));
 
   const transform = getLidarPoseMatrix(lidar.ui.scanPose);
   const point = new THREE.Vector3();
@@ -223,18 +224,27 @@ export default function LocalReturnsRadar({ lidar, currentPose, enabled, compact
   const [history, setHistory] = useState<{ lastLidar?: LidarTelemetry; keyframes: RollingSensorKeyframe[] }>({ keyframes: [] });
   const [cameraDistance, setCameraDistance] = useState(DEFAULT_CAMERA_DISTANCE);
   const [resetViewToken, setResetViewToken] = useState(0);
-  let displayedHistory = history;
-  if (enabled && lidar && history.lastLidar !== lidar) {
-    displayedHistory = {
-      lastLidar: lidar,
-      keyframes: appendRollingSensorKeyframe(
-        history.keyframes,
-        createRollingSensorKeyframe(lidar, ROLLING_SENSOR_MAP_3D_POINTS_PER_KEYFRAME),
-      ),
+  useEffect(() => {
+    if (!enabled || !lidar) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setHistory((current) => {
+        if (current.lastLidar === lidar) return current;
+        return {
+          lastLidar: lidar,
+          keyframes: appendRollingSensorKeyframe(
+            current.keyframes,
+            createRollingSensorKeyframe(lidar, ROLLING_SENSOR_MAP_3D_POINTS_PER_KEYFRAME),
+          ),
+        };
+      });
+    });
+    return () => {
+      cancelled = true;
     };
-    setHistory(displayedHistory);
-  }
-  const { keyframes } = displayedHistory;
+  }, [enabled, lidar]);
+  const { keyframes } = history;
 
   const sampleCount = lidar?.sampleCount ?? DEFAULT_LIDAR_CONFIG.sampleCount;
   const range = lidar?.ui.maxRange ?? DEFAULT_LIDAR_CONFIG.maxRange;
@@ -267,7 +277,7 @@ export default function LocalReturnsRadar({ lidar, currentPose, enabled, compact
         <div className="local-slam-viewer__axis" aria-hidden="true"><span className="axis-x">X</span><span className="axis-y">Y</span><span className="axis-z">Z</span></div>
       </div>
       <div className="local-radar__footer">
-        <span>{range} M · {sampleCount} LIVE PTS · {keyframes.length}/{ROLLING_SENSOR_MAP_KEYFRAMES} KF</span>
+        <span>{range} M · {sampleCount} RAYS/SCAN · {keyframes.length}/{ROLLING_SENSOR_MAP_KEYFRAMES} KF</span>
         <button type="button" className="local-radar__clear" onClick={() => setHistory({ lastLidar: lidar, keyframes: [] })}>CLEAR MAP</button>
       </div>
       <div className="local-slam-viewer__hint">{compact ? 'DRAG TITLE TO MOVE · CORNER TO RESIZE · DRAG ORBIT · SCROLL TO ZOOM' : 'DRAG ORBIT · SCROLL TO ZOOM'} · RETURNS + DISPLAY ODOMETRY ONLY</div>

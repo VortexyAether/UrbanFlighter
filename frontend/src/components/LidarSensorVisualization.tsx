@@ -9,8 +9,11 @@ interface LidarSensorVisualizationProps {
 
 export default function LidarSensorVisualization({ scan, visible }: LidarSensorVisualizationProps) {
   const pointSets = useMemo(() => {
+    // Avoid allocating typed geometry buffers while the sensor is disabled.
+    if (!visible || !scan) return [];
+
     const sets = [[], []] as Array<Array<{ point: THREE.Vector3; normalizedDistance: number }>>;
-    scan?.samples.forEach((sample) => {
+    scan.samples.forEach((sample) => {
       // Hits stop on simulator sensing surfaces (OSM meshes or y=0 ground);
       // misses complete the max-range shell. Every sample is displayed.
       sets[sample.hit ? 1 : 0].push({
@@ -30,7 +33,7 @@ export default function LidarSensorVisualization({ scan, visible }: LidarSensorV
       });
       return { positions, colors };
     });
-  }, [scan]);
+  }, [scan, visible]);
 
   if (!visible || !scan) return null;
 

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Line } from '@react-three/drei';
+import { Html, Line } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { isFiniteTrue3DTriplet, mapTrue3DPointToScene } from '../geometry/true3dCoordinates';
 
 interface True3DPayload {
   kind: string;
@@ -15,7 +16,7 @@ interface True3DPayload {
     nz?: number;
     buildings?: number;
   };
-  streamlines: number[][][];
+  streamlines: unknown[][];
 }
 
 interface PathLine {
@@ -27,11 +28,24 @@ interface PathLine {
 interface True3DWindStreamlinesProps {
   url: string;
   visible?: boolean;
+  onLoadStateChange?: (status: 'loading' | 'ready' | 'error') => void;
 }
 
-function toThreePoint(point: number[]) {
-  // Solver coordinates are [x, y, z_altitude]. Three.js scene is [x, y_altitude, z].
-  return new THREE.Vector3(point[0], point[2], point[1]);
+interface True3DLoadState {
+  url: string;
+  payload: True3DPayload | null;
+  error: string | null;
+}
+
+function isTrue3DPayload(value: unknown): value is True3DPayload {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<True3DPayload>;
+  return typeof candidate.kind === 'string'
+    && typeof candidate.label === 'string'
+    && !!candidate.meta
+    && typeof candidate.meta === 'object'
+    && Array.isArray(candidate.streamlines)
+    && candidate.streamlines.every((line) => Array.isArray(line));
 }
 
 function samplePolyline(points: THREE.Vector3[], t: number, target: THREE.Vector3) {
@@ -47,6 +61,7 @@ function samplePolyline(points: THREE.Vector3[], t: number, target: THREE.Vector
 const True3DFlowParticles: React.FC<{ lines: PathLine[] }> = ({ lines }) => {
   const refs = useRef<(THREE.Mesh | null)[]>([]);
   const tmp = useMemo(() => new THREE.Vector3(), []);
+  const tmpNext = useMemo(() => new THREE.Vector3(), []);
   const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
   const particles = useMemo(() => {
     const items: { line: PathLine; offset: number; color: string; scale: number }[] = [];
@@ -72,9 +87,8 @@ const True3DFlowParticles: React.FC<{ lines: PathLine[] }> = ({ lines }) => {
       const t = elapsed * 0.075 + particle.offset;
       samplePolyline(particle.line.points, t, tmp);
       mesh.position.copy(tmp);
-      const next = samplePolyline(particle.line.points, t + 0.006, new THREE.Vector3());
-      const direction = next.sub(tmp).normalize();
-      if (direction.lengthSq() > 0.0001) mesh.quaternion.setFromUnitVectors(up, direction);
+      samplePolyline(particle.line.points, t + 0.006, tmpNext).sub(tmp);
+      if (tmpNext.lengthSq() > 0.0001) mesh.quaternion.setFromUnitVectors(up, tmpNext.normalize());
     });
   });
 
@@ -90,28 +104,45 @@ const True3DFlowParticles: React.FC<{ lines: PathLine[] }> = ({ lines }) => {
   );
 };
 
-const True3DWindStreamlines: React.FC<True3DWindStreamlinesProps> = ({ url, visible = true }) => {
-  const [payload, setPayload] = useState<True3DPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
+const True3DWindStreamlines: React.FC<True3DWindStreamlinesProps> = ({
+  url,
+  visible = true,
+  onLoadStateChange,
+}) => {
+  const [loadState, setLoadState] = useState<True3DLoadState>(() => ({ url, payload: null, error: null }));
+  const payload = loadState.url === url ? loadState.payload : null;
+  const error = loadState.url === url ? loadState.error : null;
 
   useEffect(() => {
-    let cancelled = false;
-    setError(null);
-    fetch(url)
+    const controller = new AbortController();
+    onLoadStateChange?.('loading');
+    fetch(url, { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-        return response.json() as Promise<True3DPayload>;
+        return response.json() as Promise<unknown>;
       })
-      .then((data) => { if (!cancelled) setPayload(data); })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
-    return () => { cancelled = true; };
-  }, [url]);
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        if (!isTrue3DPayload(data)) throw new Error('Invalid dataset: expected labeled streamline arrays.');
+        setLoadState({ url, payload: data, error: null });
+        onLoadStateChange?.('ready');
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return;
+        setLoadState({ url, payload: null, error: reason instanceof Error ? reason.message : String(reason) });
+        onLoadStateChange?.('error');
+      });
+    return () => { controller.abort(); };
+  }, [onLoadStateChange, url]);
 
   const lines = useMemo<PathLine[]>(() => {
     if (!payload) return [];
     return payload.streamlines
       .map((line, idx) => {
-        const points = line.map(toThreePoint).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z));
+        const points = line
+          .filter(isFiniteTrue3DTriplet)
+          .map(mapTrue3DPointToScene)
+          .map(([x, y, z]) => new THREE.Vector3(x, y, z));
         const hue = 0.57 - (idx / Math.max(payload.streamlines.length - 1, 1)) * 0.48;
         const color = `#${new THREE.Color().setHSL(hue, 0.95, 0.58).getHexString()}`;
         return { points, color, offset: idx * 0.031 };
@@ -119,7 +150,39 @@ const True3DWindStreamlines: React.FC<True3DWindStreamlinesProps> = ({ url, visi
       .filter((line) => line.points.length > 5);
   }, [payload]);
 
-  if (!visible || !payload || error) return null;
+  if (!visible) return null;
+
+  if (error) {
+    return (
+      <Html fullscreen zIndexRange={[30, 0]}>
+        <div
+          role="alert"
+          style={{
+            background: 'rgba(30, 6, 10, 0.92)',
+            border: '1px solid #ff657a',
+            borderRadius: 6,
+            boxShadow: '0 8px 28px rgba(0, 0, 0, 0.45)',
+            color: '#ffe8ec',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontSize: 12,
+            left: '50%',
+            maxWidth: 420,
+            padding: '10px 14px',
+            pointerEvents: 'none',
+            position: 'absolute',
+            textAlign: 'center',
+            top: 72,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          <strong style={{ display: 'block', marginBottom: 3 }}>True 3D wind layer unavailable</strong>
+          <span>{error}</span>
+        </div>
+      </Html>
+    );
+  }
+
+  if (!payload) return null;
 
   return (
     <group name="true-3d-uvw-potential-flow-layer">

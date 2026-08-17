@@ -7,7 +7,15 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "smoke:data-flow": "node scripts/data-flow-smoke.mjs",
+    "smoke:flight-core": "node scripts/flight-core-smoke.mjs",
+    "smoke:flight3d": "node scripts/flight3d-smoke.mjs",
+    "smoke:episode-inspector": "node scripts/episode-inspector-smoke.mjs",
     "smoke:lidar": "node scripts/lidar-smoke.mjs",
+    "smoke:live-world": "node scripts/live-world-smoke.mjs",
+    "smoke:render-determinism": "node scripts/render-determinism-smoke.mjs",
+    "smoke:presentation": "node scripts/presentation-smoke.mjs",
+    "smoke:true3d": "node scripts/true3d-smoke.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

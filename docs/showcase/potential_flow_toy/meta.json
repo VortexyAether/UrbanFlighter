@@ -1,0 +1,17 @@
+{
+  "label": "POTENTIAL-FLOW CFD-LITE",
+  "navier_stokes": false,
+  "mode": "toy_city",
+  "buildings": 5,
+  "grid": [
+    26,
+    26
+  ],
+  "iterations": 348,
+  "residual": 9.839427661972877e-05,
+  "mean_speed_mps": 4.955199722101682,
+  "max_speed_mps": 12.777243443270077,
+  "inlet_from_deg": 270.0,
+  "inlet_speed_mps": 5.0,
+  "image": "docs/showcase/potential_flow_toy/potential_flow_streamlines.png"
+}

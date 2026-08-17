@@ -5,7 +5,7 @@ import { createServer } from 'vite';
 const vite = await createServer({
   root: fileURLToPath(new URL('..', import.meta.url)),
   appType: 'custom',
-  server: { middlewareMode: true },
+  server: { middlewareMode: true, hmr: false },
 });
 const {
   buildBuildingCollisionMeshes,
@@ -13,6 +13,7 @@ const {
 } = await vite.ssrLoadModule('/src/geometry/buildingGeometry.ts');
 const {
   DEFAULT_LIDAR_CONFIG,
+  LIDAR_OBSERVATION_LAYOUT,
   LIDAR_OBSERVATION_VALUES_PER_SAMPLE,
   createLidarLocalDirections,
   getLidarJetColor,
@@ -35,6 +36,34 @@ const {
   getRecordedToCurrentMatrix,
 } = await vite.ssrLoadModule('/src/sensors/rollingSensorMap.ts');
 
+const EXPECTED_OBSERVATION_LAYOUT = [
+  'directionLocalX',
+  'directionLocalY',
+  'directionLocalZ',
+  'normalizedDistance',
+  'hit',
+];
+
+function assertObservationSlots(observation, expectedSlots, label) {
+  const expectedLength = expectedSlots.length * EXPECTED_OBSERVATION_LAYOUT.length;
+  if (observation.length !== expectedLength) {
+    throw new Error(`${label}: expected ${expectedLength} observation values, got ${observation.length}.`);
+  }
+
+  expectedSlots.forEach((expectedSlot, rayIndex) => {
+    EXPECTED_OBSERVATION_LAYOUT.forEach((field, fieldIndex) => {
+      const actual = observation[rayIndex * EXPECTED_OBSERVATION_LAYOUT.length + fieldIndex];
+      const expected = expectedSlot[field];
+      const matches = field === 'hit'
+        ? actual === expected
+        : Number.isFinite(actual) && Math.abs(actual - expected) <= 1e-9;
+      if (!matches) {
+        throw new Error(`${label}: ray ${rayIndex} field ${field} expected ${expected}, got ${actual}.`);
+      }
+    });
+  });
+}
+
 const config = {
   maxRange: 100,
   sampleCount: 4,
@@ -54,6 +83,8 @@ const uniqueRoundedElevations = new Set(defaultDirections.map((direction) => dir
 const repeatedDefaultDirections = createLidarLocalDirections(DEFAULT_LIDAR_CONFIG);
 if (
   LIDAR_OBSERVATION_VALUES_PER_SAMPLE !== 5
+  || LIDAR_OBSERVATION_LAYOUT.length !== EXPECTED_OBSERVATION_LAYOUT.length
+  || LIDAR_OBSERVATION_LAYOUT.some((field, index) => field !== EXPECTED_OBSERVATION_LAYOUT[index])
   || Math.abs(defaultDirections[0].y - expectedFirstY) > 1e-12
   || Math.abs(defaultDirections.at(-1).y - expectedLastY) > 1e-12
   || uniqueRoundedElevations.size !== DEFAULT_LIDAR_CONFIG.sampleCount
@@ -93,6 +124,12 @@ const expectedObservationLength = scan.samples.length * LIDAR_OBSERVATION_VALUES
 if (scan.observation.length !== expectedObservationLength || scan.observation.some((value) => !Number.isFinite(value))) {
   throw new Error(`Expected ${expectedObservationLength} finite observation values, got ${scan.observation.length}.`);
 }
+assertObservationSlots(scan.observation, [
+  { directionLocalX: 0, directionLocalY: 0, directionLocalZ: -1, normalizedDistance: 0.29, hit: 1 },
+  { directionLocalX: 1, directionLocalY: 0, directionLocalZ: 0, normalizedDistance: 1, hit: 0 },
+  { directionLocalX: 0, directionLocalY: 0, directionLocalZ: 1, normalizedDistance: 1, hit: 0 },
+  { directionLocalX: -1, directionLocalY: 0, directionLocalZ: 0, normalizedDistance: 1, hit: 0 },
+], '3D wall hit/miss observation');
 const scanPose = { x: 12, y: 10, z: -4, yaw: 0, pitch: 0, roll: 0 };
 const telemetry = summarizeLidarScan(scan, scanPose);
 if (
@@ -111,6 +148,49 @@ if (
   throw new Error('Expected display-only scan pose and local XYZ returns to include every hit and max-range miss without changing the stable observation.');
 }
 const decimatedKeyframe = createRollingSensorKeyframe(telemetry, 2);
+const syntheticReturns = Array.from({ length: 10 }, (_, index) => ({
+  relativeX: index,
+  relativeY: index + 0.25,
+  relativeZ: -index,
+  distance: index + 1,
+  normalizedDistance: (index + 1) / 10,
+  hit: index === 1 || index === 8,
+}));
+const syntheticTelemetry = {
+  sampleCount: syntheticReturns.length,
+  nearestDistance: 2,
+  hitRatio: 0.2,
+  observation: [],
+  ui: {
+    maxRange: 10,
+    hitCount: 2,
+    scanPose: { x: 3, y: 4, z: 5, yaw: 0.1, pitch: 0.2, roll: 0.3 },
+    returns: syntheticReturns,
+  },
+};
+const hitAwareKeyframe = createRollingSensorKeyframe(syntheticTelemetry, 4);
+const hitOnlyCappedKeyframe = createRollingSensorKeyframe(syntheticTelemetry, 1);
+const clonedKeyframe = createRollingSensorKeyframe(syntheticTelemetry, syntheticReturns.length);
+const selectedSyntheticIndices = hitAwareKeyframe.returns.map((sample) => sample.relativeX);
+if (
+  JSON.stringify(selectedSyntheticIndices) !== JSON.stringify([1, 3, 7, 8])
+  || hitAwareKeyframe.returns.filter((sample) => sample.hit).length !== 2
+  || hitAwareKeyframe.returns.length !== 4
+  || hitOnlyCappedKeyframe.returns.length !== 1
+  || hitOnlyCappedKeyframe.returns[0].hit !== true
+  || createRollingSensorKeyframe(syntheticTelemetry, 0).returns.length !== 0
+  || clonedKeyframe.pose === syntheticTelemetry.ui.scanPose
+  || clonedKeyframe.returns.some((sample, index) => sample === syntheticReturns[index])
+) {
+  throw new Error('Expected deterministic hit-aware rolling selection to preserve sparse hits, obey caps, and clone selected data.');
+}
+const clonedPoseX = clonedKeyframe.pose.x;
+const clonedFirstX = clonedKeyframe.returns[0].relativeX;
+syntheticTelemetry.ui.scanPose.x = 999;
+syntheticReturns[0].relativeX = 999;
+if (clonedKeyframe.pose.x !== clonedPoseX || clonedKeyframe.returns[0].relativeX !== clonedFirstX) {
+  throw new Error('Expected rolling keyframes to remain independent after source telemetry mutation.');
+}
 let boundedKeyframes = [];
 for (let index = 0; index < ROLLING_SENSOR_MAP_KEYFRAMES + 5; index += 1) {
   boundedKeyframes = appendRollingSensorKeyframe(boundedKeyframes, {
@@ -161,6 +241,10 @@ const groundScan = scanLidar(
   { maxRange: 40, sampleCount: 2 },
   [new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 1, 0)],
 );
+assertObservationSlots(groundScan.observation, [
+  { directionLocalX: 0, directionLocalY: -1, directionLocalZ: 0, normalizedDistance: 0.3, hit: 1 },
+  { directionLocalX: 0, directionLocalY: 1, directionLocalZ: 0, normalizedDistance: 1, hit: 0 },
+], '3D ground hit/miss observation');
 if (
   !groundScan.samples[0].hit
   || Math.abs(groundScan.samples[0].distance - 12) > 1e-6
@@ -224,6 +308,25 @@ if (Math.abs(forward2D.point.x - 29) > 1e-6 || Math.abs(forward2D.point.y) > 1e-
 const expected2DObservationLength = scan2D.samples.length * LIDAR_OBSERVATION_VALUES_PER_SAMPLE;
 if (scan2D.observation.length !== expected2DObservationLength || scan2D.observation[2] !== 0) {
   throw new Error(`Expected ${expected2DObservationLength} 2D observation values with local z=0.`);
+}
+assertObservationSlots(scan2D.observation, [
+  { directionLocalX: 1, directionLocalY: 0, directionLocalZ: 0, normalizedDistance: 0.29, hit: 1 },
+  { directionLocalX: 0, directionLocalY: 1, directionLocalZ: 0, normalizedDistance: 1, hit: 0 },
+  { directionLocalX: -1, directionLocalY: 0, directionLocalZ: 0, normalizedDistance: 1, hit: 0 },
+  { directionLocalX: 0, directionLocalY: -1, directionLocalZ: 0, normalizedDistance: 1, hit: 0 },
+], '2D footprint hit/miss observation');
+const boundedScan2D = scanLidar2D(
+  { position: { x: 0, y: 0 }, heading: 0 },
+  [],
+  config2D,
+  directions2D,
+  { min_x: -40, max_x: 40, min_y: -30, max_y: 30 },
+);
+if (
+  boundedScan2D.samples.some((sample) => !sample.hit)
+  || JSON.stringify(boundedScan2D.samples.map((sample) => Math.round(sample.distance))) !== JSON.stringify([40, 30, 40, 30])
+) {
+  throw new Error('Expected browser 2D LiDAR to share the Gym solid rectangular-domain boundary semantics.');
 }
 const telemetry2D = summarizeLidar2DScan(scan2D, {
   x: 0,

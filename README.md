@@ -1,92 +1,133 @@
 # Urban Flighter
 
-Interactive urban-drone flight simulator using real OSM building footprints, live weather, CFD-lite wind fields, and LiDAR-inspired local sensor maps.
+Open-source **urban drone flight simulator**: real OSM buildings, forecast-model inlet wind, CFD-lite hidden flow, a browser cockpit, and an RL-ready (not trained) Gym contract.
 
-> **Status:** research/demo simulator. The CFD-lite field and LiDAR/SLAM-lite views are honest prototypes, not hardware-qualified sensing, full CFD, or production SLAM.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## What it does
+> CFD-lite is **not** Navier–Stokes. True 3D Wind is a **visual overlay**. LiDAR/maps are **simulator rays + odometry**, not hardware SLAM. UrbanFlow Gym is **NOT TRAINED**. The actor never sees the full flow grid.
 
-- Fly through a real urban building layout with keyboard controls and wind/energy effects.
-- Load OSM building geometry and current wind conditions through a FastAPI backend.
-- Choose three flight views:
-  - **2D** — top-down flight, CFD-lite wind field, JET LiDAR returns, rolling 2D sensor map.
-  - **3D Lite** — Three.js city flight with a visible ground surface, ground/building LiDAR returns, and a rolling 3D local sensor map.
-  - **True 3D Wind** — 3D U/V/W streamline demonstration mode.
-- Inspect a deterministic, fixed-layout LiDAR observation vector for future RL work.
-- Move, hide, resize, orbit, and zoom independent cockpit windows during flight.
+**Paper:** [`paper/urban_flighter.pdf`](paper/urban_flighter.pdf) · source [`paper/urban_flighter.tex`](paper/urban_flighter.tex)
 
-## LiDAR and sensor maps
+## What it is
 
-The 3D LiDAR prototype uses **600 deterministic Fibonacci-sphere samples** at a 120 m maximum range. It renders both building/ground hits and max-range misses with a JET-style range colormap.
+- Fly a real city footprint in **2D**, **3D Lite**, or **True 3D Wind** (overlay).
+- Backend: FastAPI + OSM + Open-Meteo + CFD-lite B (potential-flow / wall damping / empirical wake).
+- Frontend: React 19 + Three.js cockpit, deterministic LiDAR-style returns, rolling sensor maps.
+- **UrbanFlow Gym**: headless NumPy env, leakage guard, live-OSM scenario bridge, deterministic baselines.
 
-The 2D view uses **180 rays** at 180 m. Its default spawn selection uses real nearby scan returns so the local map is readable on load.
+## Showcase case (offline, no network)
 
-The rolling map windows retain bounded recent scan keyframes plus a simulated-odometry trajectory:
-
-- Current scan: vivid JET returns.
-- Earlier scans: age-faded history.
-- Trajectory/keyframes: display-only simulated odometry.
-- **Not included:** pose graph optimization, loop closure, localization uncertainty estimation, or hardware sensor calibration.
-
-The fixed RL observation contract remains five values per ray:
-
-```text
-local direction x, local direction y, local direction z,
-normalized distance, hit flag
-```
-
-## Quick start
-
-### Backend
+This is the public demo. It is a contract test, not a “wind-aware always wins” claim.
 
 ```bash
+PYTHONPATH=backend python scripts/run_oss_showcase.py
+```
+
+Writes `docs/showcase/`.
+
+**Potential-flow CFD-lite (toy city)** — 5 buildings, 5 m/s westerly inlet, 26×26 grid, residual 9.8e-5, max speed 12.8 m/s:
+
+![Potential-flow CFD-lite toy city](docs/showcase/potential_flow_toy/potential_flow_streamlines.png)
+
+**UrbanFlow Gym fixture · seed 10007 · NOT TRAINED** — direct goal collides; geometry-safe A* and inlet-aware A* both succeed:
+
+![Gym fixture trajectories](docs/showcase/gym_fixture_trajectories.png)
+
+**3 seeds {10007, 10009, 10037}, 240 steps** (hidden synthetic flow, `policy_full_flow_access=false`):
+
+| Baseline | Success | Mean path (m) | Rel-air energy | Collision eps. |
+| --- | --- | --- | --- | --- |
+| Direct goal | 0/3 | 23.5 | 180 | 3/3 |
+| Shortest-path A* | 3/3 | 142.1 | 1236 | 0/3 |
+| Inlet-aware A* | 3/3 | 141.9 | 1303 | 0/3 |
+
+Inlet-aware is **not** energy-better here. That regression is part of the demo.
+
+![Gym fixture metrics](docs/showcase/gym_fixture_metrics.png)
+
+Reproduce numbers: `docs/showcase/showcase_summary.json`.
+
+## Quick start (interactive cockpit)
+
+```bash
+# backend
 cd backend
-source venv/bin/activate
-python main.py
-```
+../.venv/bin/python main.py          # http://127.0.0.1:8000
 
-The API serves on `http://localhost:8000`.
-
-### Frontend
-
-```bash
+# frontend
 cd frontend
 npm install
-npm run dev
+npm run dev                          # http://127.0.0.1:5173
 ```
 
-Open `http://127.0.0.1:5173`.
+OSM + Open-Meteo are free; no API key. First city load needs network.
 
-## Controls
+### Controls
 
-| View | Flight controls |
-| --- | --- |
-| 2D | `WASD` moves the drone in map directions. |
-| 3D | `W/S` forward/reverse, `A/D` yaw, `E/Q`, arrows, or space/shift for climb/descend. |
+- **2D:** WASD
+- **3D Arcade:** W/S forward, A/D strafe, Q/E yaw, Space/Shift climb, R boost, F brake
+- **3D Pilot:** A/D yaw, Q/E strafe
+- `C` Chase / Orbit
 
-Cockpit windows:
+## Modes (honest)
 
-- Drag `⠿ MOVE` title bars to reposition panels.
-- Use the SLAM window corner handle to resize it.
-- Use `−`, `+`, and `RESET VIEW` to change sensor-map scale.
-- In 3D, drag inside the map to orbit and scroll to zoom.
-- `CLEAR MAP` clears display history only; it does not reset the simulator or change RL state.
+| Mode | Flyable wind | Extra |
+| --- | --- | --- |
+| 2D | Live horizontal CFD-lite B grid | 180-ray scan, rolling 2D map |
+| 3D Lite | Same B grid | 600-sample spherical returns, 3D map |
+| True 3D Wind | Still the B grid | Bundled Gangnam u/v/w streamlines |
 
-## Validation
+Presentation trees/roads/beacons are **scenery only**. They do not enter collision, LiDAR, Gym, reward, or scenario hashes.
+
+## UrbanFlow Gym
+
+Status: `LIVE OSM WORLD · NOT TRAINED`.
+
+Actor sees motion, goal, geometry LiDAR, known inlet, previous action, onboard relative-air estimate. Never the velocity grid.
 
 ```bash
-cd frontend
-npm run smoke:lidar
-npm run build
+curl http://127.0.0.1:8000/urbanflow-gym/spec
+# after a UI location load:
+curl http://127.0.0.1:8000/urbanflow-gym/live-scenarios/current
 ```
 
-`npm run lint` may surface pre-existing project-wide lint findings; the LiDAR/cockpit implementation is validated with targeted ESLint and production builds.
+Optional training extras are **not** on the default path. No shipped weights.
 
-## Architecture
+## Layout
 
-- `backend/` — FastAPI, OSM geometry, weather, and CFD-lite/3D wind services.
-- `frontend/` — React 19, TypeScript, Vite, Three.js/react-three-fiber.
-- `frontend/src/sensors/` — deterministic LiDAR scans, 2D scans, and bounded rolling sensor-map utilities.
-- `docs/` — simulator, RL, and UX design notes.
+```text
+backend/                 FastAPI, OSM, weather, CFD-lite
+backend/urbanflow_gym/   headless env + inspector API
+frontend/                React + Three.js cockpit
+scripts/run_oss_showcase.py
+docs/showcase/           committed demo figures + metrics
+paper/                   technical report (LaTeX + PDF)
+```
 
-See `CLAUDE.md` for contributor notes and `DESIGN.md` for design decisions.
+Contributor notes: `CLAUDE.md`. Design tokens: `DESIGN.md`.
+
+## Tests
+
+```bash
+cd frontend && npm run lint && npm run smoke:lidar && npm run build
+cd ../backend
+../.venv/bin/python test_urbanflow_gym_core.py
+../.venv/bin/python test_urbanflow_gym_api.py
+```
+
+## Cite
+
+```bibtex
+@techreport{jang2026urbanflighter,
+  title  = {Urban Flighter: An Honest Urban-Air Simulator
+            with CFD-lite Hidden Flow and Policy-Visible Sensing},
+  author = {Jang, Jaewon},
+  year   = {2026},
+  note   = {Open-source technical report},
+  url    = {https://github.com/VortexyAether/Urban_Flighter}
+}
+```
+
+## License
+
+MIT. See `LICENSE`.

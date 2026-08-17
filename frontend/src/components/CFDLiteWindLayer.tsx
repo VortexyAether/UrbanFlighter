@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Line } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -45,7 +45,7 @@ function samplePolyline(points: THREE.Vector3[], t: number, target: THREE.Vector
 }
 
 const FlowDashes: React.FC<{ lines: StreamlinePath[]; maxSpeed: number }> = ({ lines, maxSpeed }) => {
-  const refs = useRef<any[]>([]);
+  const refs = useRef<Array<THREE.Line | null>>([]);
   const tmpA = useMemo(() => new THREE.Vector3(), []);
   const tmpB = useMemo(() => new THREE.Vector3(), []);
   const dashes = useMemo(() => {
@@ -73,8 +73,9 @@ const FlowDashes: React.FC<{ lines: StreamlinePath[]; maxSpeed: number }> = ({ l
       const tailT = headT - dash.dashLength;
       samplePolyline(dash.line.points, tailT, tmpA);
       samplePolyline(dash.line.points, headT, tmpB);
-      const geometry = line.geometry as THREE.BufferGeometry;
-      const position = geometry.getAttribute('position') as THREE.BufferAttribute;
+      const geometry = line.geometry;
+      const position = geometry.getAttribute('position');
+      if (!(position instanceof THREE.BufferAttribute)) return;
       position.setXYZ(0, tmpA.x, tmpA.y, tmpA.z);
       position.setXYZ(1, tmpB.x, tmpB.y, tmpB.z);
       position.needsUpdate = true;
@@ -85,11 +86,16 @@ const FlowDashes: React.FC<{ lines: StreamlinePath[]; maxSpeed: number }> = ({ l
   return (
     <group name="white-flow-dash-segments">
       {dashes.map((dash, idx) => (
-        <line key={`flow-dash-${idx}-${dash.offset.toFixed(3)}`} ref={(node) => { refs.current[idx] = node; }}>
+        <line
+          key={`flow-dash-${idx}-${dash.offset.toFixed(3)}`}
+          ref={(node: unknown) => {
+            refs.current[idx] = node instanceof THREE.Line ? node : null;
+          }}
+        >
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[new Float32Array(6), 3]} />
           </bufferGeometry>
-          <lineBasicMaterial color="#ffffff" transparent opacity={0.9} depthWrite={false} toneMapped={false} />
+          <lineBasicMaterial color="#f4feff" transparent opacity={0.96} depthWrite={false} toneMapped={false} />
         </line>
       ))}
     </group>
@@ -144,6 +150,10 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
     geo.computeVertexNormals();
     return geo;
   }, [flow, height, maxSpeed, showContour]);
+
+  useEffect(() => () => {
+    contourGeometry?.dispose();
+  }, [contourGeometry]);
 
   const arrows = useMemo(() => {
     if (!hasResolvedFlowGrid(flow) || !showArrows) return [];
@@ -228,10 +238,11 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
         <Line
           key={`stream-${idx}`}
           points={line.points}
-          color={line.layerIndex % 2 === 0 ? '#a8afb2' : '#787f83'}
-          lineWidth={0.95}
+          color={`#${makeColor(line.speed, maxSpeed).offsetHSL(0, -0.08, line.layerIndex % 2 === 0 ? 0.08 : -0.02).getHexString()}`}
+          lineWidth={1.2}
           transparent
-          opacity={0.36}
+          opacity={0.56}
+          depthWrite={false}
         />
       ))}
       {showStreamlines && <FlowDashes lines={streamlines} maxSpeed={maxSpeed} />}

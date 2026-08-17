@@ -14,17 +14,37 @@ export interface RollingSensorKeyframe {
   returns: LidarUiReturn[];
 }
 
+interface IndexedReturn {
+  index: number;
+  sample: LidarUiReturn;
+}
+
+function selectEvenly(items: IndexedReturn[], count: number) {
+  if (count <= 0) return [];
+  if (count >= items.length) return items;
+
+  // Pick the midpoint of each equal-width stratum. This fills every requested
+  // slot without favoring the beginning or end of the deterministic scan order.
+  return Array.from({ length: count }, (_, slot) => (
+    items[Math.floor(((slot + 0.5) * items.length) / count)]
+  ));
+}
+
 export function createRollingSensorKeyframe(
   lidar: LidarTelemetry,
   pointLimit: number,
 ): RollingSensorKeyframe {
-  const stride = Math.max(1, Math.ceil(lidar.ui.returns.length / Math.max(1, pointLimit)));
+  const limit = Number.isFinite(pointLimit) ? Math.max(0, Math.floor(pointLimit)) : 0;
+  const indexedReturns = lidar.ui.returns.map((sample, index) => ({ index, sample }));
+  const hits = indexedReturns.filter(({ sample }) => sample.hit);
+  const misses = indexedReturns.filter(({ sample }) => !sample.hit);
+  const selectedHits = selectEvenly(hits, Math.min(limit, hits.length));
+  const selectedMisses = selectEvenly(misses, Math.min(limit - selectedHits.length, misses.length));
+  const selected = [...selectedHits, ...selectedMisses].sort((a, b) => a.index - b.index);
+
   return {
     pose: { ...lidar.ui.scanPose },
-    returns: lidar.ui.returns
-      .filter((_, index) => index % stride === 0)
-      .slice(0, pointLimit)
-      .map((sample) => ({ ...sample })),
+    returns: selected.map(({ sample }) => ({ ...sample })),
   };
 }
 

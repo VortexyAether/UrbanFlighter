@@ -2,7 +2,41 @@ import osmnx as ox
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Polygon, MultiPolygon
-import numpy as np
+import math
+import re
+
+
+DEFAULT_BUILDING_HEIGHT_M = 10.0
+METRES_PER_BUILDING_LEVEL = 3.5
+
+
+def _first_positive_number(value) -> float | None:
+    match = re.search(r"[-+]?\d+(?:\.\d+)?", str(value).replace(",", "."))
+    if match is None:
+        return None
+    try:
+        parsed = float(match.group(0))
+    except ValueError:
+        return None
+    return parsed if math.isfinite(parsed) and parsed > 0.0 else None
+
+
+def _building_height(row) -> tuple[float, str]:
+    if "height" in row and pd.notnull(row["height"]):
+        parsed = _first_positive_number(row["height"])
+        if parsed is not None:
+            return parsed, "osm:height"
+    if "building:levels" in row and pd.notnull(row["building:levels"]):
+        levels = _first_positive_number(row["building:levels"])
+        if levels is not None:
+            return levels * METRES_PER_BUILDING_LEVEL, "osm:building:levels_estimate_3.5m_per_level"
+    return DEFAULT_BUILDING_HEIGHT_M, "deterministic_default_missing_osm_height"
+
+
+def _osm_element_id(index) -> str:
+    if isinstance(index, tuple):
+        return ":".join(str(part) for part in index)
+    return str(index)
 
 def fetch_buildings(lat: float, lon: float, radius: float = 300):
     """
@@ -34,30 +68,15 @@ def fetch_buildings(lat: float, lon: float, radius: float = 300):
 
         buildings = []
         
+        projected_crs = str(gdf_proj.crs)
+
         # Iterate and extract polygons
         for idx, row in gdf_proj.iterrows():
             geom = row.geometry
             if geom.is_empty:
                 continue
 
-            # Handle heights
-            height = 10.0 # Default
-            if 'height' in row and pd.notnull(row['height']):
-                try:
-                    # Clean height string (sometimes "10 m" or "approx 10")
-                    h_str = str(row['height']).lower().replace('m', '').strip()
-                    height = float(h_str)
-                except:
-                    pass
-            elif 'building:levels' in row and pd.notnull(row['building:levels']):
-                try:
-                    levels = float(row['building:levels'])
-                    height = levels * 3.5 # Approx 3.5m per floor
-                except:
-                    pass
-            else:
-                # Randomize height slightly if unknown to make it look like a city
-                height = np.random.uniform(8.0, 25.0)
+            height, height_source = _building_height(row)
 
             # Extract footprint(s)
             polys = []
@@ -66,13 +85,18 @@ def fetch_buildings(lat: float, lon: float, radius: float = 300):
             elif isinstance(geom, MultiPolygon):
                 polys = list(geom.geoms)
 
-            for poly in polys:
+            for part_index, poly in enumerate(polys):
                 # Exterior coords
                 xx, yy = poly.exterior.coords.xy
                 # Shift to local origin (center_x, center_y) -> (0,0)
                 local_coords = []
                 for x, y in zip(xx, yy):
-                    local_coords.append([x - center_x, y - center_y])
+                    local_x = float(x - center_x)
+                    local_y = float(y - center_y)
+                    if not math.isfinite(local_x) or not math.isfinite(local_y):
+                        local_coords = []
+                        break
+                    local_coords.append([local_x, local_y])
                 
                 # Filter out degenerate polygons
                 if len(local_coords) < 3:
@@ -82,14 +106,23 @@ def fetch_buildings(lat: float, lon: float, radius: float = 300):
                 # Check if building centroid is within circular domain
                 centroid_x = sum(c[0] for c in local_coords) / len(local_coords)
                 centroid_z = sum(c[1] for c in local_coords) / len(local_coords)
-                dist_from_center = np.sqrt(centroid_x**2 + centroid_z**2)
+                dist_from_center = math.hypot(centroid_x, centroid_z)
                 
                 if dist_from_center > radius:
                     continue  # Skip buildings outside circular boundary
 
                 buildings.append({
-                    "height": height,
-                    "footprint": local_coords
+                    "building_id": f"{_osm_element_id(idx)}:part:{part_index}",
+                    "height": float(height),
+                    "height_source": height_source,
+                    "footprint": local_coords,
+                    "source": {
+                        "provider": "openstreetmap",
+                        "adapter": "osmnx",
+                        "element_id": _osm_element_id(idx),
+                        "part_index": part_index,
+                        "projected_crs": projected_crs,
+                    },
                 })
 
         print(f"OSMnx: Fetched {len(buildings)} buildings.")

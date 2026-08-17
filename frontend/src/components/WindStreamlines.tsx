@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { getWindVector } from '../systems/WindSystem';
 import type { BuildingData } from '../api';
 import { Line } from '@react-three/drei';
+import { deterministicUnit } from '../utils/deterministicSampling';
 
 interface WindStreamlinesProps {
     globalWindSpeed?: number;
@@ -13,10 +14,25 @@ interface WindStreamlinesProps {
     stepSize?: number;
 }
 
+const EMPTY_BUILDINGS: BuildingData[] = [];
+const WIND_STREAMLINE_SAMPLE_SEED = 0x7f4a7c15;
+
+// Catmull-Rom spline interpolation helper
+function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return 0.5 * (
+        (2 * p1) +
+        (-p0 + p2) * t +
+        (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+        (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+    );
+}
+
 const WindStreamlines: React.FC<WindStreamlinesProps> = ({
     globalWindSpeed = 10,
     globalWindDir = 45,
-    buildings = [],
+    buildings = EMPTY_BUILDINGS,
     streamlineCount = 200,
     maxSteps = 150,
     stepSize = 4.0
@@ -25,18 +41,6 @@ const WindStreamlines: React.FC<WindStreamlinesProps> = ({
         const rad = (globalWindDir * Math.PI) / 180;
         return new THREE.Vector3(Math.cos(rad), 0, Math.sin(rad)).multiplyScalar(globalWindSpeed);
     }, [globalWindSpeed, globalWindDir]);
-
-    // Catmull-Rom spline interpolation helper
-    const catmullRom = (p0: number, p1: number, p2: number, p3: number, t: number): number => {
-        const t2 = t * t;
-        const t3 = t2 * t;
-        return 0.5 * (
-            (2 * p1) +
-            (-p0 + p2) * t +
-            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
-            (-p0 + 3 * p1 - 3 * p2 + p3) * t3
-        );
-    };
 
     // Generate streamlines using fast Euler + Catmull-Rom smoothing
     const streamlines = useMemo(() => {
@@ -49,12 +53,15 @@ const WindStreamlines: React.FC<WindStreamlinesProps> = ({
             for (let iz = 0; iz < gridDensity; iz++) {
                 if (lines.length >= streamlineCount) break;
 
-                const startX = -1500 + ix * spacing + (Math.random() - 0.5) * spacing * 0.3;
-                const startZ = -1500 + iz * spacing + (Math.random() - 0.5) * spacing * 0.3;
-                const startY = 5 + Math.random() * 25; // 5-30m height
+                const sampleIndex = ix * gridDensity + iz;
+                const startX = -1500 + ix * spacing
+                    + (deterministicUnit(WIND_STREAMLINE_SAMPLE_SEED, sampleIndex, 0) - 0.5) * spacing * 0.3;
+                const startZ = -1500 + iz * spacing
+                    + (deterministicUnit(WIND_STREAMLINE_SAMPLE_SEED, sampleIndex, 1) - 0.5) * spacing * 0.3;
+                const startY = 5 + deterministicUnit(WIND_STREAMLINE_SAMPLE_SEED, sampleIndex, 2) * 25; // 5-30m height
 
                 const rawPoints: THREE.Vector3[] = [];
-                let currentPos = new THREE.Vector3(startX, startY, startZ);
+                const currentPos = new THREE.Vector3(startX, startY, startZ);
 
                 // Fast Euler integration (coarse sampling)
                 for (let step = 0; step < maxSteps; step++) {
