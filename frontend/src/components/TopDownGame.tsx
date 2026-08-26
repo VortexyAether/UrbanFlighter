@@ -19,6 +19,7 @@ import {
   eastNorthToCompassBearingDeg,
   mapAngleToCompassBearingDeg,
 } from '../utils/bearings';
+import { sampleMaskedBilinear } from '../utils/flowFieldSampling';
 
 interface Vec2 {
   x: number;
@@ -145,19 +146,15 @@ function sampleResolvedGrid(flow: FlowField2DResponse, point: Vec2): Vec2 | null
     return { x: 0, y: 0 };
   }
 
-  const bilerp = (values: number[]) => {
-    const c00 = values[idx(x0, y0)] ?? 0;
-    const c10 = values[idx(x1, y0)] ?? c00;
-    const c01 = values[idx(x0, y1)] ?? c00;
-    const c11 = values[idx(x1, y1)] ?? c10;
-    const c0 = c00 * (1 - tx) + c10 * tx;
-    const c1 = c01 * (1 - tx) + c11 * tx;
-    return c0 * (1 - ty) + c1 * ty;
-  };
+  const sampledUx = sampleMaskedBilinear(field.ux, field.mask, idx, x0, y0, x1, y1, tx, ty);
+  const sampledUy = sampleMaskedBilinear(field.uy, field.mask, idx, x0, y0, x1, y1, tx, ty);
+  if (sampledUx === null || sampledUy === null) {
+    return { x: 0, y: 0 };
+  }
 
   return {
-    x: bilerp(field.ux),
-    y: bilerp(field.uy),
+    x: sampledUx,
+    y: sampledUy,
   };
 }
 

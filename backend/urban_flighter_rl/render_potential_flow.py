@@ -18,14 +18,15 @@ def plot_potential_flow(world: UrbanWorld, result: PotentialFlowResult, output_p
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    fig, ax = plt.subplots(figsize=(11, 9))
+    fig, ax = plt.subplots(figsize=(7.4, 5.6))
     speed = np.sqrt(result.ux * result.ux + result.uy * result.uy)
+    speed = np.where(result.mask, np.nan, speed)
     img = ax.imshow(
         speed.T,
         origin="lower",
         extent=[float(result.x[0]), float(result.x[-1]), float(result.y[0]), float(result.y[-1])],
-        cmap="viridis",
-        alpha=0.86,
+        cmap="magma",
+        alpha=0.92,
     )
     fig.colorbar(img, ax=ax, label="speed [m/s]")
 
@@ -33,17 +34,22 @@ def plot_potential_flow(world: UrbanWorld, result: PotentialFlowResult, output_p
         arr = np.asarray(line, dtype=float)
         ax.plot(arr[:, 0], arr[:, 1], color="white", linewidth=0.9, alpha=0.82)
 
-    skip = max(1, len(result.x) // 28)
+    skip = max(1, len(result.x) // 22)
     xx, yy = np.meshgrid(result.x[::skip], result.y[::skip], indexing="ij")
+    ux = np.array(result.ux[::skip, ::skip], dtype=float, copy=True)
+    uy = np.array(result.uy[::skip, ::skip], dtype=float, copy=True)
+    solid = result.mask[::skip, ::skip]
+    ux[solid] = np.nan
+    uy[solid] = np.nan
     ax.quiver(
         xx,
         yy,
-        result.ux[::skip, ::skip],
-        result.uy[::skip, ::skip],
-        color="#ffdd88",
-        alpha=0.65,
-        width=0.0022,
-        scale=90,
+        ux,
+        uy,
+        color="#f8fafc",
+        alpha=0.55,
+        width=0.0024,
+        scale=80,
     )
 
     for b in world.buildings:

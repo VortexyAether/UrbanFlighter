@@ -8,7 +8,7 @@ import numpy as np
 from .spaces import BoxSpec
 
 
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.1.0"
 ENVIRONMENT_ID = "UrbanFlowGym-v1"
 ACTOR_OBSERVATION_SCHEMA_ID = "urbanflow.actor_observation.v1"
 PRIVILEGED_CRITIC_SCHEMA_ID = "urbanflow.privileged_critic_state.v1"
@@ -16,6 +16,8 @@ ACTION_SCHEMA_ID = "urbanflow.local_guidance_action.v1"
 REWARD_SCHEMA_ID = "urbanflow.reward_terms.v1"
 METRICS_SCHEMA_ID = "urbanflow.episode_metrics.v1"
 LIDAR_RAY_COUNT = 16
+RADAR_RAY_COUNT = 8
+EXPECTED_ACTOR_OBSERVATION_DIM = 49
 
 
 @dataclass(frozen=True)
@@ -76,7 +78,7 @@ ACTOR_OBSERVATION_FIELDS = (
         1.0,
         "relative_air_speed_limit_fraction",
         "onboard_relative_air_velocity_estimate",
-        "Onboard relative-air-velocity estimate: ground velocity minus sensed local air motion.",
+        "Onboard inlet-only relative-air estimate: ground velocity minus the known inlet, never a hidden-grid sample.",
     ),
     VectorFieldSpec(
         "known_inlet_velocity_xy_normalized",
@@ -122,6 +124,24 @@ ACTOR_OBSERVATION_FIELDS = (
         "sensor_range_fraction",
         "deterministic_geometry_lidar",
         "Fixed-angle deterministic ranges against the registered polygon geometry and domain boundary.",
+    ),
+    VectorFieldSpec(
+        "radar_ranges_normalized",
+        RADAR_RAY_COUNT,
+        0.0,
+        1.0,
+        "sensor_range_fraction",
+        "deterministic_geometry_radar",
+        "Forward-fan simulated radar ranges against registered polygon geometry. Not RF hardware.",
+    ),
+    VectorFieldSpec(
+        "radar_range_rate_normalized",
+        RADAR_RAY_COUNT,
+        -1.0,
+        1.0,
+        "relative_air_speed_limit_fraction",
+        "onboard_radar_doppler_proxy",
+        "Simulated Doppler range-rate from own ground velocity along each radar beam. Static buildings.",
     ),
     VectorFieldSpec(
         "previous_action",
@@ -239,6 +259,11 @@ EPISODE_METRICS = (
         "units": "(m/s)^2*s",
         "description": "Integral of squared relative air speed; an energy proxy, not battery watt-hours.",
     },
+    {
+        "name": "parasite_energy_j",
+        "units": "J",
+        "description": "Integrated quadratic parasite power from the shared drag core.",
+    },
     {"name": "time_s", "units": "s", "description": "Simulated elapsed time."},
     {"name": "min_clearance_m", "units": "m", "description": "Minimum obstacle/boundary clearance."},
     {"name": "score", "units": "reward", "description": "Sum of the versioned reward terms."},
@@ -293,7 +318,8 @@ def actor_observation_contract() -> dict:
         "onboard_relative_air_velocity_estimate_available": True,
         "forbidden": list(FORBIDDEN_ACTOR_CONCEPTS),
         "note": (
-            "Relative air velocity is an onboard observable; the provider object, wake state, "
+            "Relative air velocity is an inlet-only onboard estimate (ground minus known inlet). "
+            "Radar is a geometric range-Doppler proxy. The provider object, wake state, "
             "future samples, and spatial field remain hidden."
         ),
     }
@@ -349,16 +375,22 @@ def leakage_guard_report() -> dict:
     approved_sources = {
         "own_odometry",
         "own_kinematics",
-        "onboard_relative_air_velocity_estimate",
-        "known_inlet",
-        "goal_route_context",
-        "deterministic_geometry_lidar",
-        "recent_observable_history",
-    }
+            "onboard_relative_air_velocity_estimate",
+            "known_inlet",
+            "goal_route_context",
+            "deterministic_geometry_lidar",
+            "deterministic_geometry_radar",
+            "onboard_radar_doppler_proxy",
+            "recent_observable_history",
+        }
     unapproved = sorted(ALLOWED_ACTOR_SOURCES - approved_sources)
     names = {field.name for field in ACTOR_OBSERVATION_FIELDS}
     forbidden_names = sorted(names.intersection(FORBIDDEN_ACTOR_CONCEPTS))
-    passed = not unapproved and not forbidden_names and ACTOR_OBSERVATION_DIM == 33
+    passed = (
+        not unapproved
+        and not forbidden_names
+        and ACTOR_OBSERVATION_DIM == EXPECTED_ACTOR_OBSERVATION_DIM
+    )
     if not passed:
         raise RuntimeError(
             "actor observation leakage guard failed: "

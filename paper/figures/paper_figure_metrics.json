@@ -19,6 +19,7 @@
   "figures": [
     "fig_architecture.png",
     "fig_metrics.png",
+    "fig_observation.png",
     "fig_potential_flow.png",
     "fig_power_curve.png",
     "fig_trajectories.png",

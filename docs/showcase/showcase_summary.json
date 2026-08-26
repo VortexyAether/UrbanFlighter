@@ -23,7 +23,7 @@
     "image": "docs/showcase/potential_flow_toy/potential_flow_streamlines.png"
   },
   "gym_eval": {
-    "evaluation_id": "24ec026f3352e4f9",
+    "evaluation_id": "c73930718d558dcd",
     "seeds": [
       10007,
       10009,
@@ -37,11 +37,11 @@
         "success_rate": 0.0,
         "collision_count": 3,
         "collision_episode_rate": 1.0,
-        "mean_path_length_m": 23.470956884516053,
-        "mean_relative_air_speed_energy": 180.3039116492727,
-        "mean_time_s": 4.666666666666667,
+        "mean_path_length_m": 23.85795791054592,
+        "mean_relative_air_speed_energy": 158.3183521905077,
+        "mean_time_s": 5.75,
         "min_clearance_m": 0.0,
-        "mean_score": -29.96051147716169
+        "mean_score": -29.281072992041548
       },
       "shortest_path": {
         "episodes": 3,
@@ -49,11 +49,11 @@
         "success_rate": 1.0,
         "collision_count": 0,
         "collision_episode_rate": 0.0,
-        "mean_path_length_m": 142.10195840636294,
-        "mean_relative_air_speed_energy": 1235.979964372382,
-        "mean_time_s": 23.916666666666668,
-        "min_clearance_m": 1.7318158461256274,
-        "mean_score": 339.7745742157403
+        "mean_path_length_m": 141.48603619098625,
+        "mean_relative_air_speed_energy": 1099.2169898138216,
+        "mean_time_s": 31.25,
+        "min_clearance_m": 0.13777778352383052,
+        "mean_score": 338.62090967090285
       },
       "wind_aware_inlet": {
         "episodes": 3,
@@ -61,11 +61,11 @@
         "success_rate": 1.0,
         "collision_count": 0,
         "collision_episode_rate": 0.0,
-        "mean_path_length_m": 141.87754604130168,
-        "mean_relative_air_speed_energy": 1303.4103847077126,
-        "mean_time_s": 21.833333333333332,
-        "min_clearance_m": 2.03511969264774,
-        "mean_score": 339.5858160374914
+        "mean_path_length_m": 141.26596965618094,
+        "mean_relative_air_speed_energy": 1134.934681394879,
+        "mean_time_s": 28.583333333333332,
+        "min_clearance_m": 0.7906071126625704,
+        "mean_score": 339.2551056006307
       }
     },
     "artifact": "docs/showcase/gym_fixture_eval.json"
@@ -79,62 +79,68 @@
     "direct_goal": {
       "label": "Direct goal guidance",
       "uses_hidden_flow": false,
-      "obs_dim": 33,
+      "obs_dim": 49,
       "metrics": {
         "schema_id": "urbanflow.episode_metrics.v1",
         "success": 0.0,
         "collision_count": 1.0,
-        "path_length_m": 15.650377642577999,
-        "relative_air_speed_energy": 59.05971385868306,
-        "time_s": 3.25,
+        "path_length_m": 17.008168798200394,
+        "relative_air_speed_energy": 52.71844292577795,
+        "parasite_energy_j": 23.511076624701563,
+        "drag_model_id": "quadratic-air-relative-v1",
+        "time_s": 3.75,
         "min_clearance_m": 0.0,
-        "score": -44.764216404690856,
-        "steps": 13.0,
-        "final_goal_distance_m": 123.95544671814594,
+        "score": -42.269186583126306,
+        "steps": 15.0,
+        "final_goal_distance_m": 122.67691235333055,
         "termination_reason": "collision",
         "actor_full_flow_access": 0.0
       },
-      "steps": 13
+      "steps": 15
     },
     "shortest_path": {
       "label": "Geometry-safe shortest-path A*",
       "uses_hidden_flow": false,
-      "obs_dim": 33,
+      "obs_dim": 49,
       "metrics": {
         "schema_id": "urbanflow.episode_metrics.v1",
         "success": 1.0,
         "collision_count": 0.0,
-        "path_length_m": 160.22159444761286,
-        "relative_air_speed_energy": 673.0846113201312,
-        "time_s": 26.25,
-        "min_clearance_m": 1.931619826022768,
-        "score": 366.17858744233405,
-        "steps": 105.0,
-        "final_goal_distance_m": 2.1478460372359494,
+        "path_length_m": 158.56324585282803,
+        "relative_air_speed_energy": 570.6436460246546,
+        "parasite_energy_j": 321.61667079199765,
+        "drag_model_id": "quadratic-air-relative-v1",
+        "time_s": 29.75,
+        "min_clearance_m": 0.13777778352383052,
+        "score": 365.25707653204034,
+        "steps": 119.0,
+        "final_goal_distance_m": 2.1840316040914094,
         "termination_reason": "success",
         "actor_full_flow_access": 0.0
       },
-      "steps": 105
+      "steps": 119
     },
     "wind_aware_inlet": {
       "label": "Wind-aware A* + inlet feed-forward",
       "uses_hidden_flow": false,
-      "obs_dim": 33,
+      "obs_dim": 49,
       "metrics": {
         "schema_id": "urbanflow.episode_metrics.v1",
         "success": 1.0,
         "collision_count": 0.0,
-        "path_length_m": 161.12193128226698,
-        "relative_air_speed_energy": 727.4364008971357,
-        "time_s": 25.0,
-        "min_clearance_m": 2.431599256794172,
-        "score": 366.02205151960084,
-        "steps": 100.0,
-        "final_goal_distance_m": 2.2127921053939965,
+        "path_length_m": 159.30990428594458,
+        "relative_air_speed_energy": 605.526737912643,
+        "parasite_energy_j": 360.156781800864,
+        "drag_model_id": "quadratic-air-relative-v1",
+        "time_s": 28.5,
+        "min_clearance_m": 0.7906071126625704,
+        "score": 365.60530656798187,
+        "steps": 114.0,
+        "final_goal_distance_m": 2.1740238617109404,
         "termination_reason": "success",
         "actor_full_flow_access": 0.0
       },
-      "steps": 100
+      "steps": 114
     }
   }
 }

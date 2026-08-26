@@ -86,12 +86,12 @@ def test_numpy_spaces_and_actor_leakage_guard() -> None:
     env = UrbanFlowEnv(UrbanFlowConfig(max_steps=2))
     observation, reset_info = env.reset(seed=7)
 
-    assert env.observation_space.shape == (ACTOR_OBSERVATION_DIM,) == (33,)
+    assert env.observation_space.shape == (ACTOR_OBSERVATION_DIM,) == (49,)
     assert env.action_space.shape == (ACTION_DIM,) == (2,)
     assert env.observation_space.contains(observation)
     assert env.action_space.contains(np.array([1.0, -1.0], dtype=np.float32))
     assert not env.action_space.contains(np.array([1.01, 0.0], dtype=np.float32))
-    assert not env.observation_space.contains(np.full(33, np.nan, dtype=np.float32))
+    assert not env.observation_space.contains(np.full(49, np.nan, dtype=np.float32))
 
     guard = leakage_guard_report()
     contract = urbanflow_contract_payload()

@@ -354,7 +354,11 @@ def solve_polygon_potential_flow_b(
     uy *= scale
 
     dist_m = distance_transform_edt(~mask).astype(np.float32) * float(cell_size_m)
-    damping = 1.0 - np.exp(-dist_m / max(14.0, float(cell_size_m)))
+    # Near-wall-only damping: far-field stays potential-flow, walls still slow.
+    # Same O(grid) cost as the previous global exponential; no extra Jacobi work.
+    wall_length_m = max(6.0, float(cell_size_m))
+    near_wall = np.exp(-dist_m / wall_length_m)
+    damping = 1.0 - 0.45 * near_wall
     ux *= damping
     uy *= damping
 
@@ -396,7 +400,8 @@ def solve_polygon_potential_flow_b(
             "iterations": int(converged_iter),
             "residual": float(residual),
             "altitude_m": float(altitude_m),
-            "wall_damping_length_m": 14.0,
+            "wall_damping_length_m": 6.0,
+            "wall_damping_scope": "near_wall_only",
             "wake_strength": 0.55,
             "internal_obstacle_geometry": "actual_osm_polygon_mask",
         },

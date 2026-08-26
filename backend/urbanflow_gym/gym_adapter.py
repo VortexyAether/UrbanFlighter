@@ -19,9 +19,20 @@ if gym is not None and spaces is not None:
     class GymnasiumUrbanFlowEnv(gym.Env):
         metadata = UrbanFlowEnv.metadata
 
-        def __init__(self, config: UrbanFlowConfig | None = None) -> None:
+        def __init__(
+            self,
+            config: UrbanFlowConfig | None = None,
+            *,
+            scenario_factory=None,
+            fixed_scenario=None,
+        ) -> None:
             super().__init__()
-            self.core = UrbanFlowEnv(config=config)
+            kwargs = {}
+            if scenario_factory is not None:
+                kwargs["scenario_factory"] = scenario_factory
+            if fixed_scenario is not None:
+                kwargs["fixed_scenario"] = fixed_scenario
+            self.core = UrbanFlowEnv(config=config, **kwargs)
             self.observation_space = spaces.Box(
                 low=self.core.observation_space.low,
                 high=self.core.observation_space.high,
@@ -49,8 +60,8 @@ if gym is not None and spaces is not None:
 else:
 
     class GymnasiumUrbanFlowEnv:  # type: ignore[no-redef]
-        def __init__(self, config: UrbanFlowConfig | None = None) -> None:
-            del config
+        def __init__(self, config: UrbanFlowConfig | None = None, **kwargs) -> None:
+            del config, kwargs
             raise ModuleNotFoundError(
                 "Gymnasium is not installed. Install UrbanFlow training extras with: "
                 f"{TRAINING_EXTRAS_INSTALL_COMMAND}"

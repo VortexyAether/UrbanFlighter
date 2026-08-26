@@ -183,8 +183,9 @@ export default function UrbanFlowGymPanel({
         <p>{worldLoading ? 'Registering the selected OSM world…' : 'No live scenario is registered for this location.'}</p>
       )}
       <p>
-        The hidden CFD-lite grid comes from this geometry and inlet. Policies receive no full field;
-        no training and no real Navier–Stokes CFD validation were run.
+        The hidden CFD-lite grid comes from this geometry and inlet. Policies see OSM LiDAR, a
+        simulated radar proxy, and the known inlet only. No full field, no training, and no
+        Navier–Stokes validation were run.
       </p>
       <button
         type="button"

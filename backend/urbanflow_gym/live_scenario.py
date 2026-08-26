@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
+from pathlib import Path
 from threading import RLock
 from typing import Any, Iterable, Mapping
 
@@ -28,6 +29,8 @@ LIVE_AGENT_RADIUS_M = 1.25
 LIVE_GOAL_RADIUS_M = 2.5
 LIVE_LIDAR_RANGE_M = 35.0
 LIVE_LIDAR_RAY_COUNT = 16
+LIVE_RADAR_RAY_COUNT = 8
+LIVE_RADAR_RANGE_M = 40.0
 
 
 class LiveScenarioError(RuntimeError):
@@ -370,16 +373,29 @@ class RegisteredFlowGridWindProvider:
         tx = gx - x0
         ty = gy - y0
 
-        def bilerp(values: np.ndarray) -> float:
-            c00 = float(values[x0 * self._field.ny + y0])
-            c10 = float(values[x1 * self._field.ny + y0])
-            c01 = float(values[x0 * self._field.ny + y1])
-            c11 = float(values[x1 * self._field.ny + y1])
-            c0 = c00 * (1.0 - tx) + c10 * tx
-            c1 = c01 * (1.0 - tx) + c11 * tx
-            return c0 * (1.0 - ty) + c1 * ty
+        def bilerp(values: np.ndarray) -> float | None:
+            corners = (
+                ((1.0 - tx) * (1.0 - ty), x0 * self._field.ny + y0),
+                (tx * (1.0 - ty), x1 * self._field.ny + y0),
+                ((1.0 - tx) * ty, x0 * self._field.ny + y1),
+                (tx * ty, x1 * self._field.ny + y1),
+            )
+            weight = 0.0
+            value = 0.0
+            for corner_weight, index in corners:
+                if corner_weight <= 0.0 or self._field.mask[index] > 0:
+                    continue
+                weight += corner_weight
+                value += float(values[index]) * corner_weight
+            if weight <= 1e-6:
+                return None
+            return value / weight
 
-        return np.array([bilerp(self._field.ux), bilerp(self._field.uy)], dtype=float)
+        sampled_ux = bilerp(self._field.ux)
+        sampled_uy = bilerp(self._field.uy)
+        if sampled_ux is None or sampled_uy is None:
+            return np.zeros(2, dtype=float)
+        return np.array([sampled_ux, sampled_uy], dtype=float)
 
     def source_metadata(self) -> dict[str, Any]:
         return self._field.source_metadata()
@@ -521,6 +537,14 @@ def build_live_scenario_record(
                 "ray_count": LIVE_LIDAR_RAY_COUNT,
                 "max_range_m": LIVE_LIDAR_RANGE_M,
                 "ordering": "counter_clockwise_vehicle_local_starting_forward",
+            },
+            "gym_actor_radar": {
+                "ray_count": LIVE_RADAR_RAY_COUNT,
+                "max_range_m": LIVE_RADAR_RANGE_M,
+                "half_fov_deg": 60.0,
+                "model_id": "sim-range-doppler-proxy-v1",
+                "rf_hardware": False,
+                "ordering": "forward_fan_vehicle_local",
             },
             "browser_display_lidar": {
                 "ray_count": 180,
@@ -817,3 +841,57 @@ class LiveScenarioRegistry:
 
 
 live_scenario_registry = LiveScenarioRegistry()
+
+
+TRAINING_BUNDLE_SCHEMA_ID = "urbanflow.training_bundle.v1"
+
+
+def export_training_bundle(record: LiveScenarioRecord) -> dict[str, Any]:
+    field = record.flow_field
+    min_x, max_x, min_y, max_y = field.bounds_xy
+    return {
+        "schema_id": TRAINING_BUNDLE_SCHEMA_ID,
+        "snapshot": record.snapshot(),
+        "field": {
+            "nx": field.nx,
+            "ny": field.ny,
+            "cell_size_m": field.cell_size_m,
+            "bounds": {
+                "min_x": min_x,
+                "max_x": max_x,
+                "min_y": min_y,
+                "max_y": max_y,
+            },
+            "ux": field.ux.tolist(),
+            "uy": field.uy.tolist(),
+            "mask": field.mask.tolist(),
+        },
+    }
+
+
+def load_training_bundle(payload: Mapping[str, Any]) -> LiveScenarioRecord:
+    if not isinstance(payload, Mapping):
+        raise LiveScenarioValidationError("training bundle must be an object")
+    snapshot = payload.get("snapshot")
+    field_payload = payload.get("field")
+    if not isinstance(snapshot, Mapping) or not isinstance(field_payload, Mapping):
+        raise LiveScenarioValidationError("training bundle needs snapshot and field objects")
+    return LiveScenarioRecord(
+        _canonical_json_bytes(snapshot),
+        FrozenFlowField2D.from_payload(field_payload),
+    )
+
+
+def write_training_bundle(record: LiveScenarioRecord, path: str | Path) -> Path:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(export_training_bundle(record), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return destination
+
+
+def read_training_bundle(path: str | Path) -> LiveScenarioRecord:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    return load_training_bundle(payload)

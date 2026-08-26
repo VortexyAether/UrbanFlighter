@@ -14,6 +14,7 @@ backend/venv/
 *.log
 
 # Local agent/debug artifacts
+.mplconfig/
 .tars/
 .omo/
 .debug-journal.md

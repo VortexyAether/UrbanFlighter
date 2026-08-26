@@ -13,6 +13,11 @@ from .observation import (
     build_privileged_critic_state,
 )
 from .scenario import UrbanFlowScenario, make_seeded_scenario
+from urban_flighter_physics.quadratic_air_drag import (
+    evaluate_physical_drag_power,
+    integrate_quadratic_air_drag,
+)
+
 from .schemas import (
     ACTION_SCHEMA_ID,
     ACTION_SPACE,
@@ -34,6 +39,7 @@ class UrbanFlowConfig:
     max_acceleration_mps2: float = 7.0
     velocity_tracking_time_s: float = 0.65
     wind_drag_gain_per_s: float = 0.14
+    use_quadratic_air_drag: bool = True
     max_turn_rate_rad_s: float = 2.8
     agent_radius_m: float = 1.25
     goal_radius_m: float = 2.5
@@ -157,6 +163,7 @@ class UrbanFlowEnv:
         self.time_s = 0.0
         self.path_length_m = 0.0
         self.relative_air_speed_energy = 0.0
+        self.parasite_energy_j = 0.0
         self.collision_count = 0
         self.score = 0.0
         self.success = False
@@ -218,14 +225,23 @@ class UrbanFlowEnv:
         tracking_acceleration = (
             desired_ground_velocity - self.ground_velocity_xy
         ) / self.config.velocity_tracking_time_s
-        wind_drag_acceleration = -self.config.wind_drag_gain_per_s * (
-            self.ground_velocity_xy - local_wind_before
-        )
-        acceleration = tracking_acceleration + wind_drag_acceleration
+        if self.config.use_quadratic_air_drag:
+            acceleration = tracking_acceleration
+        else:
+            wind_drag_acceleration = -self.config.wind_drag_gain_per_s * (
+                self.ground_velocity_xy - local_wind_before
+            )
+            acceleration = tracking_acceleration + wind_drag_acceleration
         acceleration_norm = float(np.linalg.norm(acceleration))
         if acceleration_norm > self.config.max_acceleration_mps2:
             acceleration *= self.config.max_acceleration_mps2 / acceleration_norm
         next_velocity = self.ground_velocity_xy + acceleration * self.config.dt_s
+        if self.config.use_quadratic_air_drag:
+            next_velocity = integrate_quadratic_air_drag(
+                next_velocity,
+                local_wind_before,
+                self.config.dt_s,
+            )
         velocity_limit = self.config.max_ground_speed_mps * 1.35
         next_speed = float(np.linalg.norm(next_velocity))
         if next_speed > velocity_limit:
@@ -265,6 +281,11 @@ class UrbanFlowEnv:
             self.config.dt_s,
         )
         self.relative_air_speed_energy += energy_step
+        parasite = evaluate_physical_drag_power(
+            np.array([self.ground_velocity_xy[0], self.ground_velocity_xy[1], 0.0]),
+            np.array([local_wind_after[0], local_wind_after[1], 0.0]),
+        )
+        self.parasite_energy_j += float(parasite["parasite_power_w"]) * self.config.dt_s
         clearance = self.scenario.geometry.clearance(
             self.position_xy,
             self.config.agent_radius_m,
@@ -339,6 +360,8 @@ class UrbanFlowEnv:
             known_inlet_velocity_xy=snapshot.known_inlet_velocity_xy.copy(),
             goal_xy=snapshot.goal_xy.copy(),
             lidar_ranges_m=snapshot.lidar_ranges_m.copy(),
+            radar_ranges_m=snapshot.radar_ranges_m.copy(),
+            radar_range_rate_mps=snapshot.radar_range_rate_mps.copy(),
             previous_action=snapshot.previous_action.copy(),
         )
 
@@ -368,6 +391,8 @@ class UrbanFlowEnv:
             "collision_count": int(self.collision_count),
             "path_length_m": float(self.path_length_m),
             "relative_air_speed_energy": float(self.relative_air_speed_energy),
+            "parasite_energy_j": float(self.parasite_energy_j),
+            "drag_model_id": "quadratic-air-relative-v1",
             "time_s": float(self.time_s),
             "min_clearance_m": float(self.min_clearance_m),
             "score": float(self.score),
@@ -384,11 +409,10 @@ class UrbanFlowEnv:
         self,
         local_wind_xy: np.ndarray | None = None,
     ) -> tuple[np.ndarray, ActorSnapshot]:
-        if local_wind_xy is None:
-            local_wind_xy = self.scenario.wind_provider.velocity_at(
-                self.position_xy, self.time_s
-            )
-        relative_air_estimate = self.ground_velocity_xy - np.asarray(local_wind_xy, dtype=float)
+        del local_wind_xy
+        relative_air_estimate = (
+            self.ground_velocity_xy - self.scenario.known_inlet_velocity_xy
+        )
         observable = ActorObservableState(
             position_xy=self.position_xy,
             ground_velocity_xy=self.ground_velocity_xy,

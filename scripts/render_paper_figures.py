@@ -38,30 +38,83 @@ def _style() -> None:
 
 
 def fig_architecture(path: Path) -> None:
-    fig, ax = plt.subplots(figsize=(10.4, 4.6))
-    ax.set_xlim(0, 10.4)
-    ax.set_ylim(0, 4.6)
+    fig, ax = plt.subplots(figsize=(10.8, 5.2))
+    ax.set_xlim(0, 10.8)
+    ax.set_ylim(0, 5.2)
     ax.axis("off")
     boxes = [
-        (0.25, 2.7, 2.3, 1.5, "#dbeafe", "Data ingest\nOSM buildings\nOpen-Meteo inlet"),
-        (2.85, 2.7, 2.5, 1.5, "#fef3c7", "Hidden flow\nCFD-lite B grid\nnot Navier-Stokes"),
-        (5.65, 2.7, 2.2, 1.5, "#dcfce7", "Flyable dynamics\nquadratic v_air drag\nfixed 120 Hz"),
-        (8.15, 2.7, 2.0, 1.5, "#fce7f3", "Cockpit\n2D / 3D Lite\nLiDAR maps"),
-        (1.4, 0.35, 3.2, 1.7, "#ede9fe", "UrbanFlow Gym\nactor: OSM + inlet + LiDAR\nNO full-flow access\nNOT TRAINED"),
-        (5.3, 0.35, 3.4, 1.7, "#fee2e2", "Honesty boundary\nscenery != physics\nTrue3D overlay != flyable\nenergy from v_air"),
+        (0.25, 3.35, 2.4, 1.45, "#e8f1fb", "1  Geometry + inlet\nOSM footprints\nOpen-Meteo $U_\\infty$"),
+        (2.85, 3.35, 2.45, 1.45, "#fff4d6", "2  Hidden CFD-lite\npotential flow + wall\n+ empirical wake"),
+        (5.50, 3.35, 2.45, 1.45, "#e7f6ec", "3  Dynamics\nquadratic $v_\\mathrm{air}$ drag\n120 Hz / Gym $dt$"),
+        (8.15, 3.35, 2.40, 1.45, "#fde8f0", "4  Cockpit\n2D / 3D Lite\nLiDAR maps"),
+        (0.25, 0.35, 5.05, 2.25, "#efe9fb", "UrbanFlow Gym actor (49-D)\nOSM geometry LiDAR + sim. radar\nknown inlet only\nNO grid  ·  NOT TRAINED"),
+        (5.55, 0.35, 5.00, 2.25, "#fde8e4", "Hidden / display-only\nlocal wind → dynamics + reward\nscenery ≠ collision\nTrue 3D overlay ≠ flyable field"),
     ]
     for x, y, w, h, color, text in boxes:
-        ax.add_patch(FancyBboxPatch((x, y), w, h, boxstyle="round,pad=0.04,rounding_size=0.12",
-                                    facecolor=color, edgecolor="#111827", linewidth=1.1))
-        ax.text(x + w / 2, y + h / 2, text, ha="center", va="center", fontsize=8.4)
-    for x0, x1 in ((2.55, 2.85), (5.35, 5.65), (7.85, 8.15)):
-        ax.annotate("", xy=(x1, 3.45), xytext=(x0, 3.45),
-                    arrowprops=dict(arrowstyle="->", color="#111827", lw=1.2))
-    ax.annotate("", xy=(3.0, 2.05), xytext=(3.0, 2.7),
-                arrowprops=dict(arrowstyle="->", color="#111827", lw=1.2))
-    ax.annotate("", xy=(7.0, 2.05), xytext=(7.0, 2.7),
-                arrowprops=dict(arrowstyle="->", color="#111827", lw=1.2))
-    ax.set_title("Urban Flighter: hidden flow and drag drive motion; the actor never sees the grid")
+        ax.add_patch(
+            FancyBboxPatch(
+                (x, y),
+                w,
+                h,
+                boxstyle="round,pad=0.03,rounding_size=0.10",
+                facecolor=color,
+                edgecolor="#1f2937",
+                linewidth=1.15,
+            )
+        )
+        ax.text(x + w / 2, y + h / 2, text, ha="center", va="center", fontsize=9.0)
+    for x0, x1 in ((2.65, 2.85), (5.30, 5.50), (7.95, 8.15)):
+        ax.annotate(
+            "",
+            xy=(x1, 4.08),
+            xytext=(x0, 4.08),
+            arrowprops=dict(arrowstyle="->", color="#111827", lw=1.25),
+        )
+    ax.annotate(
+        "",
+        xy=(2.75, 2.60),
+        xytext=(4.05, 3.35),
+        arrowprops=dict(arrowstyle="->", color="#111827", lw=1.15),
+    )
+    ax.annotate(
+        "",
+        xy=(8.05, 2.60),
+        xytext=(6.70, 3.35),
+        arrowprops=dict(arrowstyle="->", color="#111827", lw=1.15),
+    )
+    ax.set_title("Urban Flighter splits hidden flow from the actor channel")
+    fig.tight_layout()
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def fig_observation(path: Path) -> None:
+    fig, ax = plt.subplots(figsize=(8.8, 3.6))
+    ax.set_xlim(0, 8.8)
+    ax.set_ylim(0, 3.6)
+    ax.axis("off")
+    actor = [
+        (0.2, 2.15, 1.3, "#dbeafe", "odometry"),
+        (1.6, 2.15, 1.5, "#dbeafe", "inlet-only\n$v_g-U_\\infty$"),
+        (3.2, 2.15, 1.4, "#dbeafe", "goal"),
+        (4.7, 2.15, 1.5, "#dbeafe", "16-ray\nLiDAR"),
+        (6.3, 2.15, 2.25, "#dbeafe", "8-beam radar\nrange + $\\dot r$"),
+    ]
+    hidden = [
+        (0.2, 0.35, 2.6, "#fee2e2", "CFD-lite grid"),
+        (3.0, 0.35, 2.6, "#fee2e2", "exact local $w$"),
+        (5.8, 0.35, 2.75, "#fee2e2", "privileged critic"),
+    ]
+    ax.text(0.2, 3.28, "Actor observation", fontsize=10, fontweight="bold")
+    ax.text(0.2, 1.48, "Hidden from reset/step", fontsize=10, fontweight="bold")
+    for x, y, w, color, text in actor:
+        ax.add_patch(FancyBboxPatch((x, y), w, 0.95, boxstyle="round,pad=0.03,rounding_size=0.08",
+                                    facecolor=color, edgecolor="#111827", linewidth=1.0))
+        ax.text(x + w / 2, y + 0.48, text, ha="center", va="center", fontsize=8.2)
+    for x, y, w, color, text in hidden:
+        ax.add_patch(FancyBboxPatch((x, y), w, 0.95, boxstyle="round,pad=0.03,rounding_size=0.08",
+                                    facecolor=color, edgecolor="#111827", linewidth=1.0))
+        ax.text(x + w / 2, y + 0.48, text, ha="center", va="center", fontsize=8.2)
     fig.tight_layout()
     fig.savefig(path, bbox_inches="tight")
     plt.close(fig)
@@ -173,6 +226,7 @@ def main() -> None:
         shutil.copy2(src, dst)
 
     fig_architecture(OUT / "fig_architecture.png")
+    fig_observation(OUT / "fig_observation.png")
     power = fig_power_curve(OUT / "fig_power_curve.png")
     wind = fig_wind_response(OUT / "fig_wind_response.png")
     summary = {"power": power, "wind": wind, "figures": sorted(p.name for p in OUT.glob("fig_*.png"))}

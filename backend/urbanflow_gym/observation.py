@@ -12,12 +12,18 @@ from .schemas import (
     ACTOR_OBSERVATION_LOW,
     LIDAR_RAY_COUNT,
     PRIVILEGED_CRITIC_DIM,
+    RADAR_RAY_COUNT,
 )
 
 
 LIDAR_LOCAL_ANGLES_RAD = (
     np.arange(LIDAR_RAY_COUNT, dtype=float) / LIDAR_RAY_COUNT * (2.0 * math.pi)
 )
+RADAR_HALF_FOV_RAD = math.radians(60.0)
+RADAR_LOCAL_ANGLES_RAD = np.linspace(
+    -RADAR_HALF_FOV_RAD, RADAR_HALF_FOV_RAD, RADAR_RAY_COUNT, dtype=float
+)
+RADAR_RANGE_M = 40.0
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,8 @@ class ActorSnapshot:
     known_inlet_velocity_xy: np.ndarray
     goal_xy: np.ndarray
     lidar_ranges_m: np.ndarray
+    radar_ranges_m: np.ndarray
+    radar_range_rate_mps: np.ndarray
     previous_action: np.ndarray
 
 
@@ -85,6 +93,14 @@ def build_actor_observation(
     )
     world_angles = observable.heading_rad + LIDAR_LOCAL_ANGLES_RAD
     lidar_ranges = geometry.lidar_ranges(observable.position_xy, world_angles, lidar_range_m)
+    radar_world_angles = observable.heading_rad + RADAR_LOCAL_ANGLES_RAD
+    radar_ranges = geometry.lidar_ranges(
+        observable.position_xy, radar_world_angles, RADAR_RANGE_M
+    )
+    radar_range_rate = np.zeros(RADAR_RAY_COUNT, dtype=float)
+    for index, angle in enumerate(radar_world_angles):
+        beam = np.array([math.cos(float(angle)), math.sin(float(angle))], dtype=float)
+        radar_range_rate[index] = -float(np.dot(observable.ground_velocity_xy, beam))
     values = np.concatenate(
         [
             geometry.normalize_position(observable.position_xy),
@@ -96,6 +112,8 @@ def build_actor_observation(
             np.array([goal_distance / max(geometry.diagonal_m, 1e-9)]),
             goal_direction_local,
             lidar_ranges / max(lidar_range_m, 1e-9),
+            radar_ranges / max(RADAR_RANGE_M, 1e-9),
+            radar_range_rate / max(relative_air_speed_limit_mps, 1e-9),
             observable.previous_action,
         ]
     )
@@ -112,6 +130,8 @@ def build_actor_observation(
         known_inlet_velocity_xy=observable.known_inlet_velocity_xy.copy(),
         goal_xy=observable.goal_xy.copy(),
         lidar_ranges_m=lidar_ranges.copy(),
+        radar_ranges_m=radar_ranges.copy(),
+        radar_range_rate_mps=radar_range_rate.copy(),
         previous_action=observable.previous_action.copy(),
     )
     return observation, snapshot

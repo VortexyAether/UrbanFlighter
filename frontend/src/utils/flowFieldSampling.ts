@@ -36,17 +36,43 @@ export function sampleFlowField2D(flow: FlowField2DResponse | null, x: number, z
   const nearest = idx(Math.round(gx), Math.round(gy));
   if ((field.mask[nearest] ?? 0) > 0) return new THREE.Vector3(0, 0, 0);
 
-  const bilerp = (values: number[]) => {
-    const c00 = values[idx(x0, y0)] ?? 0;
-    const c10 = values[idx(x1, y0)] ?? c00;
-    const c01 = values[idx(x0, y1)] ?? c00;
-    const c11 = values[idx(x1, y1)] ?? c10;
-    const c0 = c00 * (1 - tx) + c10 * tx;
-    const c1 = c01 * (1 - tx) + c11 * tx;
-    return c0 * (1 - ty) + c1 * ty;
-  };
+  const sampledUx = sampleMaskedBilinear(field.ux, field.mask, idx, x0, y0, x1, y1, tx, ty);
+  const sampledUy = sampleMaskedBilinear(field.uy, field.mask, idx, x0, y0, x1, y1, tx, ty);
+  if (sampledUx === null || sampledUy === null) return new THREE.Vector3(0, 0, 0);
 
-  return new THREE.Vector3(bilerp(field.ux), 0, -bilerp(field.uy));
+  return new THREE.Vector3(sampledUx, 0, -sampledUy);
+}
+
+export function isSolidMaskCell(mask: number[] | undefined, index: number): boolean {
+  return (mask?.[index] ?? 0) > 0;
+}
+
+export function sampleMaskedBilinear(
+  values: number[],
+  mask: number[] | undefined,
+  idx: (ix: number, iy: number) => number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  tx: number,
+  ty: number,
+): number | null {
+  const corners = [
+    { w: (1 - tx) * (1 - ty), index: idx(x0, y0) },
+    { w: tx * (1 - ty), index: idx(x1, y0) },
+    { w: (1 - tx) * ty, index: idx(x0, y1) },
+    { w: tx * ty, index: idx(x1, y1) },
+  ];
+  let weight = 0;
+  let value = 0;
+  corners.forEach((corner) => {
+    if (isSolidMaskCell(mask, corner.index) || corner.w <= 0) return;
+    weight += corner.w;
+    value += (values[corner.index] ?? 0) * corner.w;
+  });
+  if (weight <= 1e-6) return null;
+  return value / weight;
 }
 
 export function flowSpeedAtIndex(flow: FlowField2DResponse, ix: number, iy: number) {

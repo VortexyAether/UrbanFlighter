@@ -202,6 +202,9 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
           const vec = sampleFlowField2D(flow, x, z);
           const speed = vec?.length() ?? 0;
           if (!vec || speed < 0.12) break;
+          const ix = Math.max(0, Math.min(field.nx - 1, Math.round(((x - field.bounds.min_x) / Math.max(1e-6, field.bounds.max_x - field.bounds.min_x)) * (field.nx - 1))));
+          const iy = Math.max(0, Math.min(field.ny - 1, Math.round(((fieldY - field.bounds.min_y) / Math.max(1e-6, field.bounds.max_y - field.bounds.min_y)) * (field.ny - 1))));
+          if ((field.mask[ix * field.ny + iy] ?? 0) > 0) break;
           const wave = Math.sin((i * 0.23) + layerIndex * 0.8) * 1.8;
           pts.push(new THREE.Vector3(x, layerHeight + wave, z));
           meanSpeed += speed;

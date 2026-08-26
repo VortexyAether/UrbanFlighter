@@ -18,13 +18,19 @@ Open-source **urban drone flight simulator**: real OSM buildings, forecast-model
 
 ## Components (live, not mockups)
 
-Captured 2026-08-26 from the running cockpit (`frontend :5173` + `backend :8000`). Domain: **Inha / Incheon** `37.451448, 126.651542`. Status that day: `BACKEND OK`, **47 OSM buildings / 400 m**, inlet **2.1 m/s from 287°** (Open-Meteo forecast-model current), HUD `CFD-LITE B GRID`.
+Captured 2026-08-27 from the running cockpit (`frontend :5173` + `backend :8000`) using chrome-hidden `?shot=2d|3d|map|radar|cockpit` views, so floating windows are not cropped through the HUD. Domain: **Inha / Incheon** `37.451448, 126.651542`. That session: `BACKEND OK`, **47 OSM buildings / 400 m**, inlet **1.5 m/s from 23°** (Open-Meteo forecast-model current), HUD `CFD-LITE B GRID`.
+
+```bash
+# optional: recapture the README / paper live figures
+# backend :8000 and frontend :5173 must already be up
+node scripts/capture_live_shots.mjs
+```
 
 ### 1. geometry loader — `backend/services/geometry.py`
 
 OSMnx `features_from_point` → projected footprints + height (`osm:height`, else `building:levels × 3.5 m`, else 10 m default). Leaflet picker + presets (NYC / Paris / Tokyo / Inha). This is the collision / LiDAR / CFD mask source.
 
-![Geometry loader: Inha OSM picker, 47 buildings, BACKEND OK](docs/showcase/components/geometry_loader_map_inha.png)
+![Geometry loader: Inha OSM picker, BACKEND OK](docs/showcase/components/geometry_loader_map_inha.png)
 
 ### 2. wind — `backend/services/wind.py`
 
@@ -34,19 +40,19 @@ Open-Meteo current 10 m `wind_speed_10m` / `wind_direction_10m` in m/s. If the f
 
 `/flow-fields/2d`: potential-flow streamfunction + wall damping + empirical wake. UI stamp: `CFD-LITE B GRID`. **Not Navier–Stokes.** 3D Lite flies this same horizontal `ux,uy` grid; True 3D Wind is a separate u/v/w overlay.
 
-![simplecfd 2D field around OSM footprints](docs/showcase/components/simplecfd_2d_field_inha.png)
+![simplecfd 2D field around OSM footprints, chrome hidden](docs/showcase/components/simplecfd_2d_field_inha.png)
 
-![3D Lite cockpit: OSM prisms + CFD-lite streamlines + radar](docs/showcase/components/cockpit_3d_lite_inha.png)
+![3D Lite: OSM prisms + presentation dressing + CFD-lite streamlines](docs/showcase/components/cockpit_3d_lite_inha.png)
 
 ### 4. radar — `LocalReturns2D.tsx` / `LocalReturnsRadar.tsx`
 
-Deterministic simulator rays vs OSM collision meshes (3D also hits `y=0` ground). Rolling map = **SIM odometry · no loop closure**. This capture: 2D ~64 hits, 3D 233 hits.
+Deterministic simulator rays vs OSM collision meshes (3D also hits `y=0` ground). Rolling map = **SIM odometry · no loop closure**. This capture: **233 hits**.
 
 ![3D rolling sensor map, 233 hits, no loop closure](docs/showcase/components/radar_3d_inha.png)
 
-Full 2D cockpit (geometry + simplecfd arrows + 2D radar together):
+2D status bar only (no floating panels):
 
-![2D Inha cockpit](docs/showcase/components/cockpit_2d_inha.png)
+![2D Inha canvas + command bar](docs/showcase/components/cockpit_2d_inha.png)
 
 ## Showcase case (offline, no network)
 
@@ -62,17 +68,17 @@ Writes `docs/showcase/`.
 
 ![Potential-flow CFD-lite toy city](docs/showcase/potential_flow_toy/potential_flow_streamlines.png)
 
-**UrbanFlow Gym fixture · seed 10007 · NOT TRAINED** — direct goal collides; geometry-safe A* and inlet-aware A* both succeed:
+**UrbanFlow Gym fixture · seed 10007 · NOT TRAINED** — direct goal collides; geometry-safe A* and inlet-aware A* both succeed. Actor observation is 49-D (LiDAR + simulated radar, inlet-only relative air).
 
 ![Gym fixture trajectories](docs/showcase/gym_fixture_trajectories.png)
 
-**3 seeds {10007, 10009, 10037}, 240 steps** (hidden synthetic flow, `policy_full_flow_access=false`):
+**3 seeds {10007, 10009, 10037}, 240 steps** (hidden synthetic flow + quadratic drag, `policy_full_flow_access=false`):
 
 | Baseline | Success | Mean path (m) | Rel-air energy | Collision eps. |
 | --- | --- | --- | --- | --- |
-| Direct goal | 0/3 | 23.5 | 180 | 3/3 |
-| Shortest-path A* | 3/3 | 142.1 | 1236 | 0/3 |
-| Inlet-aware A* | 3/3 | 141.9 | 1303 | 0/3 |
+| Direct goal | 0/3 | 23.9 | 158 | 3/3 |
+| Shortest-path A* | 3/3 | 141.5 | 1099 | 0/3 |
+| Inlet-aware A* | 3/3 | 141.3 | 1135 | 0/3 |
 
 Inlet-aware is **not** energy-better here. That regression is part of the demo.
 
@@ -116,7 +122,7 @@ Presentation trees/roads/beacons are **scenery only**. They do not enter collisi
 
 Status: `LIVE OSM WORLD · NOT TRAINED`.
 
-Actor sees motion, goal, geometry LiDAR, known inlet, previous action, onboard relative-air estimate. Never the velocity grid.
+Actor sees motion, goal, 16-ray geometry LiDAR, 8-beam simulated radar (range + Doppler proxy), known inlet, previous action, and an inlet-only relative-air estimate. Never the velocity grid.
 
 ```bash
 curl http://127.0.0.1:8000/urbanflow-gym/spec
@@ -145,7 +151,9 @@ Contributor notes: `CLAUDE.md`. Design tokens: `DESIGN.md`.
 cd frontend && npm run lint && npm run smoke:lidar && npm run build
 cd ../backend
 ../.venv/bin/python test_urbanflow_gym_core.py
+../.venv/bin/python test_urbanflow_rl_foundation.py
 ../.venv/bin/python test_urbanflow_gym_api.py
+PYTHONPATH=backend ../.venv/bin/python -m urbanflow_gym.eval_policy --seed 10007 --max-steps 80
 ```
 
 ## Cite

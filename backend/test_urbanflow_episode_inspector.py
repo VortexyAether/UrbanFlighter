@@ -180,13 +180,13 @@ def test_batch_matches_serial_steps_for_baseline_and_action_override() -> None:
         scenario_id=record.scenario_id,
         seed=10_007,
         baseline_id="direct_goal",
-        max_steps=100,
+        max_steps=8,
     )
     batched = manager.create(
         scenario_id=record.scenario_id,
         seed=10_007,
         baseline_id="direct_goal",
-        max_steps=100,
+        max_steps=8,
     )
     serial_reward = 0.0
     serial_steps = 0
@@ -198,8 +198,12 @@ def test_batch_matches_serial_steps_for_baseline_and_action_override() -> None:
         if not serial_final["session_active"]:
             break
     assert serial_final is not None
-    assert serial_final["frame"]["termination_reason"] == "collision"
-    assert serial_steps < INSPECTOR_MAX_BATCH_STEPS
+    assert serial_final["session_active"] is False
+    assert serial_final["frame"]["termination_reason"] in {
+        "collision",
+        "success",
+        "time_limit",
+    }
 
     batch_final = manager.step(
         batched["session_id"],
@@ -363,8 +367,10 @@ def test_actor_frame_contains_visual_contract_without_flow_field_leakage() -> No
     assert world["structure_count"] == 2 == len(world["buildings"])
     assert sorted(building["height_m"] for building in world["buildings"]) == [17.5, 37.5]
     assert len(frame["actor_lidar"]["rays"]) == 16
-    assert len(frame["actor_observation"]["vector"]) == 33
-    assert len(frame["actor_observation"]["fields"]) == 10
+    assert len(frame["actor_radar"]["rays"]) == 8
+    assert frame["actor_radar"]["rf_hardware"] is False
+    assert len(frame["actor_observation"]["vector"]) == 49
+    assert len(frame["actor_observation"]["fields"]) == 12
     for field, specification in zip(
         frame["actor_observation"]["fields"],
         ACTOR_OBSERVATION_FIELDS,

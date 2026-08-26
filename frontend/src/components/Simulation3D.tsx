@@ -41,6 +41,7 @@ interface Simulation3DProps {
   onControlPresetChange: (preset: DroneControlPreset) => void;
   presentationMode: boolean;
   onPresentationModeChange: (enabled: boolean) => void;
+  hideFlightHud?: boolean;
 }
 
 const DEFAULT_BOUNDS: Flight3DBounds = { min_x: -400, max_x: 400, min_y: -400, max_y: 400 };
@@ -102,6 +103,7 @@ export default function Simulation3D({
   onControlPresetChange,
   presentationMode,
   onPresentationModeChange,
+  hideFlightHud = false,
 }: Simulation3DProps) {
   const [aircraftMetrics, setAircraftMetrics] = useState<AircraftMetrics | null>(null);
   const [true3DOverlayStatus, setTrue3DOverlayStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -244,6 +246,7 @@ export default function Simulation3D({
           buildings={buildings}
         />
       </ThreeCanvas>
+      {!hideFlightHud && (
       <FlightGameHud
         metrics={aircraftMetrics}
         safetyRadiusM={safetyRadiusM}
@@ -258,6 +261,7 @@ export default function Simulation3D({
         onCameraModeChange={(mode) => onFollowCameraChange(mode === 'chase')}
         onPresentationModeChange={onPresentationModeChange}
       />
+      )}
       {!flow && <div className="simulation-3d-loading">Loading 3D field...</div>}
     </div>
   );

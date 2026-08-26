@@ -72,7 +72,7 @@ def test_versioned_spec_and_alias_are_explicit_about_status_boundaries() -> None
     for path in ("/urbanflow-gym/spec", "/api/urbanflow-gym/spec"):
         status, payload = _request_json("GET", path)
         assert status == 200
-        assert payload["contract_version"] == "1.0.0"
+        assert payload["contract_version"] == "1.1.0"
         assert payload["environment_id"] == "UrbanFlowGym-v1"
         assert payload["labels"]["primary"] == "URBANFLOW GYM / LIVE OSM WORLD · NOT TRAINED"
         assert payload["labels"]["world"] == "LIVE OSM WORLD"
@@ -96,7 +96,7 @@ def test_bounded_evaluate_returns_aggregate_comparison_without_trajectories() ->
     assert payload["status"] == "ok"
     assert payload["scenario_kind"] == "synthetic_fixture"
     assert payload["scenario_id"] is None
-    assert payload["contract_version"] == "1.0.0"
+    assert payload["contract_version"] == "1.1.0"
     assert payload["artifact_path"] is None
     assert payload["evaluation_config"]["seeds"] == [10_007]
     assert payload["evaluation_config"]["max_steps"] == 50

@@ -1,6 +1,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -21,6 +22,15 @@ import { useUrbanFlighterData } from './hooks/useUrbanFlighterData';
 import './App.css';
 
 type CockpitWindow = 'map' | 'telemetry' | 'slam' | 'inspector';
+type ShotKind = '2d' | '3d' | 'map' | 'radar' | 'cockpit';
+
+function readShotKind(): ShotKind | null {
+  if (typeof window === 'undefined') return null;
+  const value = new URLSearchParams(window.location.search).get('shot');
+  return value === '2d' || value === '3d' || value === 'map' || value === 'radar' || value === 'cockpit'
+    ? value
+    : null;
+}
 type WindowPosition = { x: number; y: number };
 type WindowSize = { width: number; height: number };
 
@@ -356,12 +366,13 @@ function DraggableWindow({
 }
 
 function App() {
-  const [windows, setWindows] = useState<Record<CockpitWindow, boolean>>({
-    map: true,
-    telemetry: true,
-    slam: true,
+  const shot = useMemo(readShotKind, []);
+  const [windows, setWindows] = useState<Record<CockpitWindow, boolean>>(() => ({
+    map: shot === 'map' || shot == null,
+    telemetry: shot == null,
+    slam: shot === 'radar' || shot == null,
     inspector: false,
-  });
+  }));
   const [activeWindow, setActiveWindow] = useState<CockpitWindow>('slam');
   const [layoutResetToken, setLayoutResetToken] = useState(0);
   const [controlPreset, setControlPreset] = useState<DroneControlPreset>('arcade');
@@ -394,6 +405,18 @@ function App() {
     handleReload,
   } = actions;
 
+  useEffect(() => {
+    if (!shot) return;
+    if (shot === '3d' || shot === 'radar') {
+      handleSimulationModeSelect('3d');
+      setPresentationMode(true);
+    }
+    setShowLidar(shot === 'radar' || shot === 'cockpit');
+    // Intentionally once per shot URL. handleSimulationModeSelect is not stable
+    // and must not retrigger /flow-fields/2d on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shot]);
+
   const viewMode: ViewMode = simulationMode === '2d' ? '2d' : '3d';
   const isTrue3DMode = simulationMode === 'true3d';
   const buildingCount = flow?.buildings.length ?? 0;
@@ -407,13 +430,19 @@ function App() {
     if (visible) setActiveWindow(windowName);
   };
 
+  const hideChrome = shot === '2d' || shot === '3d' || shot === 'radar';
+
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell${shot ? ` app-shell--shot app-shell--shot-${shot}` : ''}`}
+      data-shot-ready={flow && !loading ? '1' : '0'}
+      data-building-count={buildingCount}
+    >
       {viewMode === '2d' ? (
         <TopDownGame
           flow={flow}
           showFlowAnimation={showFlowAnimation}
-          flowVisualization="arrows"
+          flowVisualization={shot === '2d' ? 'both' : 'arrows'}
           showLidar={showLidar}
           onTelemetry={setTelemetry}
         />
@@ -431,19 +460,22 @@ function App() {
           onControlPresetChange={setControlPreset}
           presentationMode={presentationMode}
           onPresentationModeChange={setPresentationMode}
+          hideFlightHud={shot === '3d'}
           onLidarTelemetry={(lidar) => setTelemetry((previous) => ({ ...previous, lidar: lidar ?? undefined }))}
         />
       )}
-      <CommandBar
-        modelStatus={modelStatus}
-        backendState={backendState}
-        backendLabel={backendLabel}
-        modeLabel={modeLabel}
-        solverLabel={solverLabel}
-        buildingCount={buildingCount}
-        windSpeed={windSpeed}
-        energyRate={telemetry.energyRate}
-      />
+      {!hideChrome && (
+        <CommandBar
+          modelStatus={modelStatus}
+          backendState={backendState}
+          backendLabel={backendLabel}
+          modeLabel={modeLabel}
+          solverLabel={solverLabel}
+          buildingCount={buildingCount}
+          windSpeed={windSpeed}
+          energyRate={telemetry.energyRate}
+        />
+      )}
 
       <DraggableWindow windowName="map" visible={windows.map} active={activeWindow === 'map'} onActivate={() => setActiveWindow('map')} resetToken={layoutResetToken}>
         <RegionPanel
@@ -514,6 +546,7 @@ function App() {
         />
       </DraggableWindow>
 
+      {!shot && (
       <nav className="window-dock" aria-label="Cockpit windows">
         {(['map', 'telemetry', 'slam', 'inspector'] as CockpitWindow[]).map((windowName) => (
           <button
@@ -543,6 +576,7 @@ function App() {
           Reset Layout
         </button>
       </nav>
+      )}
     </div>
   );
 }

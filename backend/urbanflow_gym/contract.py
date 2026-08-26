@@ -83,7 +83,10 @@ def urbanflow_contract_payload() -> dict:
             "full_spatial_field_hidden_from_actor": True,
             "direct_provider_state_hidden_from_actor": True,
             "onboard_relative_air_velocity_estimate_available": True,
-            "relative_air_velocity_formula": "ground_velocity - hidden_local_wind",
+            "relative_air_velocity_formula": "ground_velocity - known_inlet",
+            "hidden_relative_air_used_for": ["dynamics", "reward", "episode_metrics"],
+            "drag_model_id": "quadratic-air-relative-v1",
+            "drag_model_shared_with_cockpit": True,
             "hidden_field_allowed_uses": [
                 "dynamics",
                 "reward",
@@ -114,14 +117,18 @@ def urbanflow_contract_payload() -> dict:
         "training": {
             "status": "not_run_on_mac_mini",
             "requires_exported_or_registered_live_snapshot": True,
-            "entrypoint": "optional scaffold only; no training was run for this vertical slice",
+            "entrypoint": "urbanflow_gym.train; fixture by default, optional live snapshot",
             "ppo_command": (
                 "PYTHONPATH=backend .venv/bin/python -m urbanflow_gym.train "
-                "--algorithm ppo --total-timesteps 100000"
+                "--algorithm ppo --total-timesteps 100000 --world fixture"
             ),
             "sac_command": (
                 "PYTHONPATH=backend .venv/bin/python -m urbanflow_gym.train "
-                "--algorithm sac --total-timesteps 100000"
+                "--algorithm sac --total-timesteps 100000 --world fixture"
+            ),
+            "eval_command": (
+                "PYTHONPATH=backend .venv/bin/python -m urbanflow_gym.eval_policy "
+                "--checkpoint results/urbanflow_gym/training/urbanflow_ppo_seed17.zip"
             ),
             "algorithms": ALGORITHM_CONFIGS,
             "extras_install_command": TRAINING_EXTRAS_INSTALL_COMMAND,

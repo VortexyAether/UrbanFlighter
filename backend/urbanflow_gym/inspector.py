@@ -19,7 +19,7 @@ from .live_scenario import (
     live_scenario_registry,
     make_live_scenario,
 )
-from .observation import LIDAR_LOCAL_ANGLES_RAD
+from .observation import LIDAR_LOCAL_ANGLES_RAD, RADAR_LOCAL_ANGLES_RAD, RADAR_RANGE_M
 from .schemas import (
     ACTION_SCHEMA_ID,
     ACTOR_OBSERVATION_FIELDS,
@@ -191,6 +191,40 @@ def _lidar_payload(env: UrbanFlowEnv) -> dict:
     }
 
 
+def _radar_payload(env: UrbanFlowEnv) -> dict:
+    snapshot = env.actor_snapshot()
+    rays = []
+    for local_angle, distance, range_rate in zip(
+        RADAR_LOCAL_ANGLES_RAD,
+        snapshot.radar_ranges_m,
+        snapshot.radar_range_rate_mps,
+        strict=True,
+    ):
+        world_angle = snapshot.heading_rad + float(local_angle)
+        endpoint = snapshot.position_xy + float(distance) * np.array(
+            [math.cos(world_angle), math.sin(world_angle)],
+            dtype=float,
+        )
+        rays.append(
+            {
+                "local_angle_rad": float(local_angle),
+                "distance_m": float(distance),
+                "range_rate_mps": float(range_rate),
+                "endpoint_xy_m": endpoint.tolist(),
+                "hit": bool(float(distance) < RADAR_RANGE_M - 1e-6),
+            }
+        )
+    return {
+        "ray_count": len(rays),
+        "max_range_m": float(RADAR_RANGE_M),
+        "half_fov_deg": 60.0,
+        "model_id": "sim-range-doppler-proxy-v1",
+        "rf_hardware": False,
+        "frame": "vehicle_local_forward_fan",
+        "rays": rays,
+    }
+
+
 def _frame_payload(
     session: InspectorSession,
     *,
@@ -258,6 +292,7 @@ def _frame_payload(
             for trajectory_frame in env.trajectory
         ],
         "actor_lidar": _lidar_payload(env),
+        "actor_radar": _radar_payload(env),
         "local_guidance_action": {
             "schema_id": ACTION_SCHEMA_ID,
             "frame": "vehicle_local_forward_left",
