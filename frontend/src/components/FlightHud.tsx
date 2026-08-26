@@ -27,9 +27,13 @@ export default function FlightHud({ flow, telemetry, energyHistory, viewMode, en
     <>
       <div className="hud-grid">
         <Metric label="Drone Speed" value={`${telemetry.droneSpeed.toFixed(1)} m/s`} />
+        <Metric label="Air Rel" value={`${(telemetry.relativeAirSpeed ?? 0).toFixed(1)} m/s`} />
         <Metric label="Local Wind" value={`${telemetry.localWindSpeed.toFixed(1)} m/s`} />
         <Metric label="Wind Dir" value={`${telemetry.localWindDirDeg.toFixed(0)}°`} />
         <Metric label="Heading" value={`${telemetry.headingDeg.toFixed(0)}°`} />
+        <Metric label="Flow" value={telemetry.flowType ?? 'CROSS'} />
+        <Metric label="Parasite" value={`${(telemetry.dragPowerW ?? 0).toFixed(0)} W`} />
+        <Metric label="Induced" value={`${(telemetry.inducedPowerW ?? 0).toFixed(0)} W`} />
         <Metric label="Energy Burn" value={`${telemetry.energyRate.toFixed(1)} u/s`} wide />
         <Metric label="Total Energy" value={`${telemetry.energyUsed.toFixed(0)} u`} wide accent />
       </div>

@@ -49,6 +49,9 @@ export default function FlightGameHud({
       <div className="flight-game-hud__readouts">
         <span><small>ALT</small>{metrics ? `${metrics.position.y.toFixed(1)} m` : '--'}</span>
         <span><small>SPD</small>{metrics ? `${metrics.velocity.length().toFixed(1)} m/s` : '--'}</span>
+        <span><small>VAIR</small>{metrics ? `${metrics.energyMetrics.relativeAirSpeed.toFixed(1)} m/s` : '--'}</span>
+        <span><small>DRAG</small>{metrics ? `${metrics.energyMetrics.dragForceN.toFixed(1)} N` : '--'}</span>
+        <span><small>FLOW</small>{metrics ? metrics.energyMetrics.flowType : '--'}</span>
         <span className="flight-game-hud__beacon"><small>FREE-FLIGHT BEACON</small>{distanceToBeacon === null ? '--' : `${distanceToBeacon.toFixed(0)} m`}</span>
         {true3DOverlayStatus && (
           <span className={`flight-game-hud__uvw flight-game-hud__uvw--${true3DOverlayStatus}`}>
@@ -93,6 +96,7 @@ export default function FlightGameHud({
       </p>
       <p className="flight-game-hud__scale">
         Visual quad {DRONE_SCALE_CONTRACT.visualBody.spanM.toFixed(2)} m span · research safety {safetyRadiusM.toFixed(2)} m horizontal / {verticalSafetyClearanceM.toFixed(2)} m roof clearance{presentationMode ? '' : ' (shown)'}.
+        Drag is quadratic air-relative; stick-off follows local wind. Not blade-element / not NS.
       </p>
     </section>
   );

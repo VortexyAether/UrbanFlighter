@@ -1,3 +1,5 @@
+import { integrateQuadraticAirDrag2, parasiteDragPerM, QUAD_AIR_DRAG } from './quadraticAirDrag';
+
 export interface Flight2DVector {
   x: number;
   y: number;
@@ -29,6 +31,8 @@ export interface Flight2DMotionOptions {
   thrust?: number;
   dragPerSecond?: number;
   windAccelerationScale?: number;
+  quadraticAirDragPerM?: number;
+  linearAirDragPerS?: number;
   collisionRadius?: number;
 }
 
@@ -39,8 +43,10 @@ export const FLIGHT_2D_MAX_CATCH_UP_STEPS = 30;
 const DEFAULT_MOTION_OPTIONS: Required<Flight2DMotionOptions> = {
   maxSpeed: 32,
   thrust: 34,
-  dragPerSecond: 0.9,
-  windAccelerationScale: 0.22,
+  dragPerSecond: 0,
+  windAccelerationScale: 0,
+  quadraticAirDragPerM: parasiteDragPerM(),
+  linearAirDragPerS: QUAD_AIR_DRAG.linearAirDragPerS,
   collisionRadius: 12,
 };
 const COLLISION_EPSILON = 1e-9;
@@ -240,7 +246,7 @@ export function stepFlight2DMotion(
     ? Math.atan2(direction.y, direction.x)
     : state.heading;
   const damping = Math.exp(-resolvedOptions.dragPerSecond * deltaSeconds);
-  const velocity = {
+  const thrustVelocity = {
     x: (
       state.velocity.x
       + (direction.x * resolvedOptions.thrust + wind.x * resolvedOptions.windAccelerationScale) * deltaSeconds
@@ -250,6 +256,10 @@ export function stepFlight2DMotion(
       + (direction.y * resolvedOptions.thrust + wind.y * resolvedOptions.windAccelerationScale) * deltaSeconds
     ) * damping,
   };
+  const velocity = integrateQuadraticAirDrag2(thrustVelocity, wind, deltaSeconds, {
+    kPerM: resolvedOptions.quadraticAirDragPerM,
+    linearPerS: resolvedOptions.linearAirDragPerS,
+  });
   const speed = Math.hypot(velocity.x, velocity.y);
   if (speed > resolvedOptions.maxSpeed) {
     const speedScale = resolvedOptions.maxSpeed / speed;

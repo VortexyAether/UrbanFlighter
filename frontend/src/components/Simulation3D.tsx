@@ -73,6 +73,12 @@ function toTelemetry(metrics: AircraftMetrics): Telemetry {
       roll: metrics.roll,
     },
     lidar: metrics.lidar ?? undefined,
+    relativeAirSpeed: metrics.energyMetrics.relativeAirSpeed,
+    dragForceN: metrics.energyMetrics.dragForceN,
+    dragPowerW: metrics.energyMetrics.dragPowerW,
+    inducedPowerW: metrics.energyMetrics.inducedPowerW,
+    totalPowerW: metrics.energyMetrics.totalPowerW,
+    flowType: metrics.energyMetrics.flowType,
   };
 }
 

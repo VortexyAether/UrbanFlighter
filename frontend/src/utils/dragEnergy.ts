@@ -1,3 +1,9 @@
+import {
+  QUAD_AIR_DRAG,
+  evaluatePhysicalDragPower,
+  type AirVector3,
+} from '../simulation/quadraticAirDrag';
+
 export type FlowType = 'COUNTER' | 'CROSS' | 'TAIL';
 
 export interface VectorLike {
@@ -15,6 +21,9 @@ export interface DragEnergyMetrics {
   dragForceN: number;
   dragPowerW: number;
   inducedPowerW: number;
+  climbPowerW: number;
+  totalPowerW: number;
+  modelId: string;
 }
 
 export interface DragEnergyConfig {
@@ -31,20 +40,6 @@ export interface DragEnergyConfig {
   optimalCruiseSpeedMps?: number;
 }
 
-const DEFAULT_CONFIG = {
-  airDensityKgM3: 1.225,
-  dragCoefficient: 1.05,
-  frontalAreaM2: 0.18,
-  vehicleWeightN: 24.5,
-  rotorSpanM: 1.15,
-  hoverPowerW: 68,
-  sensorPowerW: 8,
-  inducedPowerW: 28,
-  energyUnitScale: 0.03,
-  minCruiseSpeedMps: 1.2,
-  optimalCruiseSpeedMps: 11,
-};
-
 function componentY(vec: VectorLike) {
   return vec.y ?? 0;
 }
@@ -55,6 +50,10 @@ function componentZ(vec: VectorLike) {
 
 function magnitude(vec: VectorLike) {
   return Math.hypot(vec.x, componentY(vec), componentZ(vec));
+}
+
+function toAirVector(vec: VectorLike): AirVector3 {
+  return { x: vec.x, y: componentY(vec), z: componentZ(vec) };
 }
 
 function dot(a: VectorLike, b: VectorLike) {
@@ -87,51 +86,35 @@ export function calculateDragEnergy(
   windVelocity: VectorLike,
   config: DragEnergyConfig = {},
 ): DragEnergyMetrics {
-  const resolved = { ...DEFAULT_CONFIG, ...config };
-  const groundSpeed = magnitude(groundVelocity);
-  const relativeVelocity = {
-    x: groundVelocity.x - windVelocity.x,
-    y: componentY(groundVelocity) - componentY(windVelocity),
-    z: componentZ(groundVelocity) - componentZ(windVelocity),
-  };
-  const relativeAirSpeed = magnitude(relativeVelocity);
-  const effectiveAirSpeed = Math.max(resolved.minCruiseSpeedMps, relativeAirSpeed);
+  const energyUnitScale = config.energyUnitScale ?? QUAD_AIR_DRAG.energyUnitScale;
+  const physics = evaluatePhysicalDragPower(toAirVector(groundVelocity), toAirVector(windVelocity), {
+    ...QUAD_AIR_DRAG,
+    airDensityKgM3: config.airDensityKgM3 ?? QUAD_AIR_DRAG.airDensityKgM3,
+    dragCoefficient: config.dragCoefficient ?? QUAD_AIR_DRAG.dragCoefficient,
+    frontalAreaM2: config.frontalAreaM2 ?? QUAD_AIR_DRAG.frontalAreaM2,
+    massKg: config.vehicleWeightN
+      ? config.vehicleWeightN / QUAD_AIR_DRAG.gravityMps2
+      : QUAD_AIR_DRAG.massKg,
+    sensorPowerW: config.sensorPowerW ?? QUAD_AIR_DRAG.sensorPowerW,
+    energyUnitScale,
+  });
   const alignment = calculateWindAlignment(groundVelocity, windVelocity);
   const flowType = getFlowType(alignment);
-
-  const dragForceN = 0.5
-    * resolved.airDensityKgM3
-    * resolved.dragCoefficient
-    * resolved.frontalAreaM2
-    * effectiveAirSpeed ** 2;
-  const dragPowerW = dragForceN * effectiveAirSpeed;
-
-  const rotorLoadingW = (resolved.vehicleWeightN ** 2)
-    / (resolved.airDensityKgM3 * resolved.rotorSpanM ** 2 * resolved.optimalCruiseSpeedMps);
-  const inducedPowerW = resolved.inducedPowerW + rotorLoadingW * 0.18;
-  const climbPowerW = Math.max(0, componentY(groundVelocity)) * resolved.vehicleWeightN;
-  const slowFlightPenaltyW = groundSpeed < resolved.optimalCruiseSpeedMps
-    ? (resolved.optimalCruiseSpeedMps - Math.max(groundSpeed, 0.1)) * 2.4
-    : 0;
-
-  const totalPowerW = resolved.hoverPowerW
-    + resolved.sensorPowerW
-    + dragPowerW
-    + inducedPowerW
-    + climbPowerW
-    + slowFlightPenaltyW;
-  const consumptionRate = totalPowerW * resolved.energyUnitScale;
-  const cruiseError = Math.abs(effectiveAirSpeed - resolved.optimalCruiseSpeedMps) / resolved.optimalCruiseSpeedMps;
+  const cruiseRef = config.optimalCruiseSpeedMps ?? 11;
+  const cruiseError = Math.abs(physics.relativeAirSpeed - cruiseRef) / cruiseRef;
   const efficiency = clamp(1 - cruiseError * 0.72 - Math.max(0, alignment - 120) / 240, 0, 1);
 
   return {
-    consumptionRate,
+    consumptionRate: physics.totalPowerW * energyUnitScale,
     windAlignment: alignment,
     flowType,
     efficiency,
-    relativeAirSpeed,
-    dragForceN,
-    dragPowerW,
-    inducedPowerW,
+    relativeAirSpeed: physics.relativeAirSpeed,
+    dragForceN: physics.dragForceN,
+    dragPowerW: physics.parasitePowerW,
+    inducedPowerW: physics.inducedPowerW,
+    climbPowerW: physics.climbPowerW,
+    totalPowerW: physics.totalPowerW,
+    modelId: QUAD_AIR_DRAG.modelId,
   };
 }

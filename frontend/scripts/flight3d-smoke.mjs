@@ -91,7 +91,7 @@ try {
     { x: 0, y: 0, z: 0 },
     obstacles,
     bounds,
-    { safetyRadiusM: safetyRadius, maxHorizontalSpeedMps: 100, boostedHorizontalSpeedMps: 100 },
+    { safetyRadiusM: safetyRadius, maxHorizontalSpeedMps: 100, boostedHorizontalSpeedMps: 100, quadraticAirDragPerM: 0, linearAirDragPerS: 0 },
     0.2,
   );
   if (crossing.position.x >= -1.25 || Math.abs(crossing.velocity.x) > 1e-12) {
@@ -158,10 +158,19 @@ try {
     throw new Error(`Spawn did not clear the OSM roof and safety envelope: ${JSON.stringify(spawn)}.`);
   }
 
+  const { integrateQuadraticAirDrag3 } = await vite.ssrLoadModule('/src/simulation/quadraticAirDrag.ts');
+  let drifted = { x: 0, y: 0, z: 0 };
+  for (let step = 0; step < 720; step += 1) {
+    drifted = integrateQuadraticAirDrag3(drifted, { x: 5, y: 0, z: -2 }, 1 / 120);
+  }
+  if (Math.hypot(drifted.x - 5, drifted.z + 2) > 1.2) {
+    throw new Error(`3D zero-thrust hover must drift toward local wind: ${JSON.stringify(drifted)}.`);
+  }
+
   console.log(JSON.stringify({
     status: 'ok',
-    tests: 8,
-    contract: 'selectable controls/camera, 0.58m body vs 1.25m horizontal/2m vertical research envelope, swept OSM collision, fixed-step equivalence, bounded catch-up, roof-safe spawn',
+    tests: 9,
+    contract: 'selectable controls/camera, 0.58m body vs 1.25m horizontal/2m vertical research envelope, swept OSM collision, fixed-step equivalence, bounded catch-up, roof-safe spawn, quadratic wind-follow',
   }));
 } finally {
   await vite.close();

@@ -11,9 +11,42 @@ Open-source **urban drone flight simulator**: real OSM buildings, forecast-model
 ## What it is
 
 - Fly a real city footprint in **2D**, **3D Lite**, or **True 3D Wind** (overlay).
+- Four live modules: **geometry loader**, **wind**, **simplecfd**, **radar** (screenshots below).
 - Backend: FastAPI + OSM + Open-Meteo + CFD-lite B (potential-flow / wall damping / empirical wake).
 - Frontend: React 19 + Three.js cockpit, deterministic LiDAR-style returns, rolling sensor maps.
 - **UrbanFlow Gym**: headless NumPy env, leakage guard, live-OSM scenario bridge, deterministic baselines.
+
+## Components (live, not mockups)
+
+Captured 2026-08-26 from the running cockpit (`frontend :5173` + `backend :8000`). Domain: **Inha / Incheon** `37.451448, 126.651542`. Status that day: `BACKEND OK`, **47 OSM buildings / 400 m**, inlet **2.1 m/s from 287°** (Open-Meteo forecast-model current), HUD `CFD-LITE B GRID`.
+
+### 1. geometry loader — `backend/services/geometry.py`
+
+OSMnx `features_from_point` → projected footprints + height (`osm:height`, else `building:levels × 3.5 m`, else 10 m default). Leaflet picker + presets (NYC / Paris / Tokyo / Inha). This is the collision / LiDAR / CFD mask source.
+
+![Geometry loader: Inha OSM picker, 47 buildings, BACKEND OK](docs/showcase/components/geometry_loader_map_inha.png)
+
+### 2. wind — `backend/services/wind.py`
+
+Open-Meteo current 10 m `wind_speed_10m` / `wind_direction_10m` in m/s. If the fetch fails, the payload is labelled `deterministic_fallback` (never a silent fake sensor). This inlet is the **known** wind on the HUD and in actor observations. Building-scale local flow is **not**.
+
+### 3. simplecfd — `backend/services/flow_2d.py`
+
+`/flow-fields/2d`: potential-flow streamfunction + wall damping + empirical wake. UI stamp: `CFD-LITE B GRID`. **Not Navier–Stokes.** 3D Lite flies this same horizontal `ux,uy` grid; True 3D Wind is a separate u/v/w overlay.
+
+![simplecfd 2D field around OSM footprints](docs/showcase/components/simplecfd_2d_field_inha.png)
+
+![3D Lite cockpit: OSM prisms + CFD-lite streamlines + radar](docs/showcase/components/cockpit_3d_lite_inha.png)
+
+### 4. radar — `LocalReturns2D.tsx` / `LocalReturnsRadar.tsx`
+
+Deterministic simulator rays vs OSM collision meshes (3D also hits `y=0` ground). Rolling map = **SIM odometry · no loop closure**. This capture: 2D ~64 hits, 3D 233 hits.
+
+![3D rolling sensor map, 233 hits, no loop closure](docs/showcase/components/radar_3d_inha.png)
+
+Full 2D cockpit (geometry + simplecfd arrows + 2D radar together):
+
+![2D Inha cockpit](docs/showcase/components/cockpit_2d_inha.png)
 
 ## Showcase case (offline, no network)
 

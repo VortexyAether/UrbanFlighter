@@ -1,0 +1,19 @@
+{
+  "captured_kst": "2026-08-26",
+  "frontend": "http://127.0.0.1:5173",
+  "backend": "http://127.0.0.1:8000",
+  "location": {"name": "Inha/Incheon", "lat": 37.451448, "lon": 126.651542},
+  "buildings": 47,
+  "radius_m": 400,
+  "inlet": {"speed_mps": 2.1, "from_deg": 287, "source": "Open-Meteo forecast-model current"},
+  "hud": "CFD-LITE B GRID",
+  "live_world": "4d2195826a",
+  "radar_hits": {"2d": 64, "3d": 233},
+  "files": [
+    "cockpit_2d_inha.png",
+    "cockpit_3d_lite_inha.png",
+    "geometry_loader_map_inha.png",
+    "simplecfd_2d_field_inha.png",
+    "radar_3d_inha.png"
+  ]
+}

@@ -46,6 +46,12 @@ export interface Telemetry {
   position: Vec2;
   displayPose: LidarDisplayPose;
   lidar?: LidarTelemetry;
+  relativeAirSpeed?: number;
+  dragForceN?: number;
+  dragPowerW?: number;
+  inducedPowerW?: number;
+  totalPowerW?: number;
+  flowType?: 'COUNTER' | 'CROSS' | 'TAIL';
 }
 
 interface WorldState {
@@ -287,11 +293,11 @@ function scaledWind(wind: Vec2, windScale: number): Vec2 {
   };
 }
 
-function computeEnergyRate(velocity: Vec2, wind: Vec2): number {
+function computeEnergyMetrics(velocity: Vec2, wind: Vec2) {
   return calculateDragEnergy(
     { x: velocity.x, y: 0, z: velocity.y },
     { x: wind.x, y: 0, z: wind.y },
-  ).consumptionRate;
+  );
 }
 
 function lerpColor(
@@ -777,7 +783,7 @@ export default function TopDownGame({
         y: (keysRef.current.has('KeyW') ? 1 : 0) - (keysRef.current.has('KeyS') ? 1 : 0),
       };
       let wind = scaledWind(sampleField(flow, obstacles, world.position), windScale);
-      let energyRate = computeEnergyRate(world.velocity, wind);
+      let energy = computeEnergyMetrics(world.velocity, wind);
       const fixedStepResult = consumeFlight2DFixedSteps(
         physicsAccumulatorRef.current,
         frameDelta,
@@ -795,13 +801,13 @@ export default function TopDownGame({
           world.position = nextMotion.position;
           world.velocity = nextMotion.velocity;
           world.heading = nextMotion.heading;
-          energyRate = computeEnergyRate(world.velocity, wind);
-          world.energyUsed += energyRate * fixedDelta;
+          energy = computeEnergyMetrics(world.velocity, wind);
+          world.energyUsed += energy.consumptionRate * fixedDelta;
         },
       );
       physicsAccumulatorRef.current = fixedStepResult.accumulatorSeconds;
       wind = scaledWind(sampleField(flow, obstacles, world.position), windScale);
-      energyRate = computeEnergyRate(world.velocity, wind);
+      energy = computeEnergyMetrics(world.velocity, wind);
 
       if (showLidar) {
         lidarClockRef.current += fixedStepResult.simulatedSeconds;
@@ -1066,7 +1072,7 @@ export default function TopDownGame({
         droneSpeed: length(world.velocity),
         localWindSpeed: length(wind),
         localWindDirDeg: eastNorthToCompassBearingDeg(wind.x, wind.y),
-        energyRate,
+        energyRate: energy.consumptionRate,
         energyUsed: world.energyUsed,
         headingDeg: mapAngleToCompassBearingDeg(world.heading),
         position: { ...world.position },
@@ -1079,6 +1085,12 @@ export default function TopDownGame({
           roll: 0,
         },
         lidar: showLidar ? lidarTelemetryRef.current ?? undefined : undefined,
+        relativeAirSpeed: energy.relativeAirSpeed,
+        dragForceN: energy.dragForceN,
+        dragPowerW: energy.dragPowerW,
+        inducedPowerW: energy.inducedPowerW,
+        totalPowerW: energy.totalPowerW,
+        flowType: energy.flowType,
       });
     };
 

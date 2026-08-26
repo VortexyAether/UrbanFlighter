@@ -21,6 +21,9 @@ export interface EnergyMetrics {
     dragForceN: number;
     dragPowerW: number;
     inducedPowerW: number;
+    climbPowerW: number;
+    totalPowerW: number;
+    modelId: string;
 }
 
 /**
@@ -45,9 +48,11 @@ export function getFlowType(alignmentAngle: number): FlowType {
  * Calculate energy consumption rate
  * 
  * Formula:
- * F_drag = 0.5 * rho * C_d * A * |v_air|^2
- * P_drag = F_drag * |v_air|
- * consumption = hover + sensors + drag power + induced rotor power
+ * v_air = v_ground - w_local
+ * F_para = 0.5 * rho * C_d * A * |v_air|^2
+ * P_para = F_para * |v_air|
+ * P_ind = momentum-theory hover induced / sqrt(1 + (|v_air|/v_h)^2)
+ * Not blade-element and not Navier-Stokes.
  */
 export function calculateEnergyConsumption(
     velocity: THREE.Vector3,

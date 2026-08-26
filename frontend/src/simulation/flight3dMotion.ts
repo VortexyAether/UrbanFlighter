@@ -1,5 +1,6 @@
 import type { BuildingData } from '../api';
 import type { Flight3DCommand } from './flight3dControls';
+import { integrateQuadraticAirDrag3, parasiteDragPerM, QUAD_AIR_DRAG } from './quadraticAirDrag';
 
 export interface Flight3DVector {
   x: number;
@@ -38,6 +39,8 @@ export interface Flight3DMotionOptions {
   boostedHorizontalSpeedMps?: number;
   maxVerticalSpeedMps?: number;
   boostedVerticalSpeedMps?: number;
+  quadraticAirDragPerM?: number;
+  linearAirDragPerS?: number;
 }
 
 export interface Flight3DSpawnOptions {
@@ -56,11 +59,10 @@ const REVERSE_ACCEL_MPS2 = 18;
 const STRAFE_ACCEL_MPS2 = 21;
 const VERTICAL_ACCEL_MPS2 = 19;
 const YAW_RATE_RAD_S = 1.8;
-const HORIZONTAL_DAMPING_PER_S = 1.18;
-const VERTICAL_DAMPING_PER_S = 1.55;
+const HORIZONTAL_DAMPING_PER_S = 0.12;
+const VERTICAL_DAMPING_PER_S = 0.35;
 const BRAKE_DAMPING_PER_S = 8.5;
 const BOOST_ACCELERATION_SCALE = 1.55;
-const WIND_ACCELERATION_SCALE = 0.03;
 const COLLISION_EPSILON = 1e-9;
 
 const DEFAULT_MOTION_LIMITS = Object.freeze({
@@ -246,17 +248,22 @@ export function stepFlight3DMotion(
   velocity.x += (
     forward.x * command.forward * forwardAcceleration * horizontalScale * accelerationScale
     + right.x * command.strafe * STRAFE_ACCEL_MPS2 * horizontalScale * accelerationScale
-    + wind.x * WIND_ACCELERATION_SCALE
   ) * deltaSeconds;
   velocity.z += (
     forward.z * command.forward * forwardAcceleration * horizontalScale * accelerationScale
     + right.z * command.strafe * STRAFE_ACCEL_MPS2 * horizontalScale * accelerationScale
-    + wind.z * WIND_ACCELERATION_SCALE
   ) * deltaSeconds;
   velocity.y += (
     command.lift * VERTICAL_ACCEL_MPS2 * accelerationScale
-    + wind.y * WIND_ACCELERATION_SCALE
   ) * deltaSeconds;
+
+  const dragged = integrateQuadraticAirDrag3(velocity, wind, deltaSeconds, {
+    kPerM: options.quadraticAirDragPerM ?? parasiteDragPerM(),
+    linearPerS: options.linearAirDragPerS ?? QUAD_AIR_DRAG.linearAirDragPerS,
+  });
+  velocity.x = dragged.x;
+  velocity.y = dragged.y;
+  velocity.z = dragged.z;
 
   let horizontalDamping = HORIZONTAL_DAMPING_PER_S;
   let verticalDamping = VERTICAL_DAMPING_PER_S;

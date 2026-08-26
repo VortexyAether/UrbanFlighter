@@ -1,5 +1,4 @@
-% Urban Flighter technical report (preprint-style).
-% Compile: tectonic urban_flighter.tex
+% Urban Flighter preprint. Compile from paper/: tectonic urban_flighter.tex
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage{times}
@@ -10,100 +9,110 @@
 \usepackage{xcolor}
 \usepackage{caption}
 \usepackage{authblk}
+\usepackage[numbers,sort&compress]{natbib}
 
-\hypersetup{
-  colorlinks=true,
-  linkcolor=black,
-  citecolor=black,
-  urlcolor=blue
-}
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue}
 
 \title{Urban Flighter: An Honest Urban-Air Simulator\\
-with CFD-lite Hidden Flow and Policy-Visible Sensing}
+with Hidden CFD-lite Flow and Quadratic Air-Relative Drag}
 \author{Jaewon Jang}
-\affil{Inha University; VortexyAether}
+\affil{Inha University}
 \date{August 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-Urban Flighter is an open-source urban drone simulator that couples real OpenStreetMap (OSM) building geometry, forecast-model inlet wind, and a browser cockpit with a headless research environment.
-The design goal is not a new Navier--Stokes solver.
-It is an \emph{honest contract}: hidden urban-flow approximations may drive dynamics, energy, and metrics, while a policy or baseline may observe only mission context, known inlet wind, onboard relative-air estimates, and deterministic geometry LiDAR.
-We document the three public flight views (2D, 3D Lite, True 3D Wind overlay), the potential-flow CFD-lite field with wall damping and empirical wake correction, and UrbanFlow Gym, a NumPy environment that is RL-ready but \textbf{not trained}.
-A fully offline showcase case on a synthetic fixture shows the expected qualitative result: unconstrained goal-seeking collides, geometry-safe A* succeeds, and an inlet-aware heuristic is \emph{not} automatically energy-optimal.
+Urban air routing needs a simulator in which buildings, local wind, drag, sensing, and energy interact, without leaking privileged flow fields into a learning agent.
+Urban Flighter is an open-source urban drone simulator that couples real OpenStreetMap geometry and forecast-model inlet wind with a browser cockpit and a headless research environment.
+The contribution is not a new Navier--Stokes solver.
+It is an explicit contract: cheap urban-flow approximations and quadratic air-relative drag may drive dynamics, energy, and metrics, while a policy may observe only mission context, the known inlet, onboard relative-air estimates, and deterministic geometry LiDAR.
+We document the flyable 2D / 3D Lite loop, the potential-flow CFD-lite field with wall damping and empirical wake correction, a momentum-theory induced plus quadratic parasite power model, and UrbanFlow Gym, which is RL-ready but \textbf{not trained}.
+Two checkable studies are reported.
+A still-air / headwind / tailwind integration of the shared drag core shows stick-off drift toward local wind and a higher energy cost in headwind than tailwind under the same thrust.
+An offline Gym fixture shows that unconstrained goal-seeking collides, geometry-safe A* succeeds, and an inlet-aware heuristic is \emph{not} automatically energy-optimal.
 \end{abstract}
 
 \section{Introduction}
 
-Urban air mobility and small-UAV routing need environments where buildings, wind, sensing, and energy interact.
-Many simulators either hide those interactions behind game physics or leak privileged flow fields into the learning agent.
-Urban Flighter takes a third position: keep the cockpit watchable, keep the geometry real when a city is loaded, and keep the research contract explicit.
+Small uncrewed aircraft in cities feel two things that game physics usually erases: buildings that must not be hit, and air that is not still.
+A tailwind lowers relative airspeed; a headwind raises it; a wake behind a slab can do both in one block.
+Those effects change both the trajectory a vehicle can hold and the energy it burns~\cite{hoffmann2007quadrotor}.
 
-The software is already a working full-stack prototype:
-\begin{itemize}
-  \item a FastAPI backend that fetches OSM footprints and Open-Meteo current conditions, then computes CFD-lite fields;
-  \item a React/Three.js frontend with 2D and 3D flight, LiDAR-inspired returns, and a Gym episode inspector;
-  \item a headless UrbanFlow Gym core with leakage guards and deterministic baselines.
-\end{itemize}
+Existing aerial simulators often optimize photorealism or vehicle dynamics~\cite{shah2018airsim,guerra2019flightgoggles}.
+Standalone CFD packages optimize field accuracy and are not interactive flight products.
+Urban Flighter sits between them.
+It loads real OpenStreetMap (OSM) footprints when a city is requested~\cite{haklay2008osm}, computes a cheap hidden flow field, flies a metre-scale quadrotor under quadratic air-relative drag, and exposes a Gymnasium-shaped interface~\cite{brockman2016gym} whose actor channel is forbidden from seeing the grid.
 
-This report is a \emph{system paper / technical report}, not a claim of a new turbulence model or a trained policy.
-All quantitative numbers in Section~\ref{sec:showcase} are produced by
-\texttt{scripts/run\_oss\_showcase.py} and stored under \texttt{docs/showcase/}.
+This paper is a system / software preprint, not a turbulence-model paper and not a trained-policy paper.
+Every quantitative number below is produced by committed scripts.
 
-\section{Related systems and positioning}
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item An honest full-stack urban-air cockpit: OSM geometry, CFD-lite hidden flow, 120\,Hz flyable 2D and 3D motion, and simulator LiDAR maps that are labelled as odometry, not SLAM.
+  \item A shared quadratic air-relative drag core used by flyable motion and energy accounting, with momentum-theory induced power. Stick-off equilibrium is local wind, not still air.
+  \item UrbanFlow Gym: a NumPy environment with leakage guards, live-scenario binding, and three deterministic baselines. Status: \textbf{NOT TRAINED}.
+  \item Two reproducible studies (drag integration; offline Gym fixture) whose qualitative outcomes are stated in advance and not rewritten after the run.
+\end{enumerate}
 
-AirSim, FlightGoggles, and related aerial simulators emphasize photorealism or vehicle dynamics.
-Standalone CFD packages emphasize field accuracy but are not interactive flight products.
-Urban Flighter sits between them: OSM-scale urban geometry, cheap hidden flow, and an RL-shaped observation contract.
+\section{Related work}
 
-Closest internal relatives are the project's own AeroJAX 2D incompressible Navier--Stokes snapshots (optional offline engine) and the browser CFD-lite B grid used for flyable dynamics.
-The public cockpit does \emph{not} treat bundled True 3D $u/v/w$ streamlines as the flyable field.
+AirSim provides Unreal-based visual and physical simulation for autonomous vehicles, including a quadrotor, and compares software components with real flights~\cite{shah2018airsim}.
+FlightGoggles emphasizes photorealistic exteroceptive sensing and can keep complex vehicle dynamics outside the renderer~\cite{guerra2019flightgoggles}.
+Urban Flighter does the opposite of photogrammetry-first design: the primary object is a research contract over urban wind, drag, and observations, rendered in a browser rather than Unreal or Unity.
 
-\section{System architecture}
+Hoffmann et al.\ showed that even moderate airspeed changes quadrotor thrust and attitude, so hover-only models fail outdoors~\cite{hoffmann2007quadrotor}.
+We take that lesson at a coarser grain: parasite drag and induced power depend on $\mathbf{v}_{\mathrm{air}}=\mathbf{v}_{\mathrm{g}}-\mathbf{w}$, not on ground speed alone.
+The model is not blade-element theory and is not a claim to match STARMAC flight data.
+
+OpenStreetMap supplies the building layer~\cite{haklay2008osm}.
+The Gym-style $\mathrm{reset}/\mathrm{step}$ shape follows the OpenAI Gym interface~\cite{brockman2016gym}.
+Gymnasium / Stable-Baselines3 / Torch remain optional extras; the default UrbanFlow core is NumPy-only.
+
+\section{System}
+
+Figure~\ref{fig:arch} is the product split.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.98\linewidth]{figures/fig_architecture.png}
+  \caption{Hidden CFD-lite flow and quadratic drag drive motion and energy.
+  The actor never receives the grid.
+  Scenery and the True 3D $u/v/w$ overlay are display-only.}
+  \label{fig:arch}
+\end{figure}
 
 \paragraph{Backend.}
-\texttt{backend/} serves geometry, weather, and flow.
-\texttt{/flow-fields/2d} is the primary live endpoint: a streamfunction / potential-flow-ish grid with wall damping and an empirical wake correction (``CFD-lite B'').
-Successful non-empty responses are registered as an immutable content-addressed snapshot \texttt{urbanflow.live\_scenario.v1}.
+\texttt{/flow-fields/2d} returns OSM polygons, an Open-Meteo (or labelled fallback) inlet, and a streamfunction / potential-flow-ish grid with wall damping and an empirical wake correction (``CFD-lite B'').
+A successful non-empty response is registered as an immutable snapshot \texttt{urbanflow.live\_scenario.v1}.
 
 \paragraph{Frontend.}
-Three public modes:
+Three public modes share the same flyable horizontal grid:
 \begin{itemize}
-  \item \textbf{2D}: north-up canvas, 120\,Hz fixed-step motion, swept-circle clearance, 180-ray scan.
-  \item \textbf{3D Lite}: metre-scale quadcopter, same horizontal live grid, building/ground LiDAR, presentation-only city dressing.
-  \item \textbf{True 3D Wind}: the same flyable city plus a bundled 3D potential-flow $u/v/w$ overlay (Gangnam demo). Overlay $\neq$ flight dynamics.
+  \item \textbf{2D}: north-up canvas, 120\,Hz, swept-circle clearance, 180-ray scan.
+  \item \textbf{3D Lite}: 0.58\,m visual quad, 1.25\,m horizontal / 2\,m roof research envelope, building and ground returns.
+  \item \textbf{True 3D Wind}: the same flyable city plus a bundled voxel potential-flow $u/v/w$ overlay. Overlay $\neq$ flight dynamics.
 \end{itemize}
-
-\paragraph{Energy proxy.}
-Unless a more detailed motor model is requested, step energy uses relative airspeed
-\begin{equation}
-  e_t = \lVert \mathbf{v}_{\mathrm{ground},t} - \mathbf{w}_{\mathrm{local}}(\mathbf{x}_t,t) \rVert^2 \Delta t.
-\end{equation}
-The local wind $\mathbf{w}_{\mathrm{local}}$ is a hidden sample. The actor may receive only an onboard estimate and the known inlet.
+Presentation trees, lamps, and road paint never enter collision, LiDAR, Gym, reward, or scenario hashes.
 
 \paragraph{Honesty labels.}
-The product UI and this paper use the same vocabulary:
 CFD-lite $\neq$ Navier--Stokes;
 SIM odometry / no loop closure;
 UrbanFlow Gym / NOT TRAINED;
 full flow access = NO.
 
-\section{CFD-lite hidden dynamics}
+\section{Hidden flow}
+\label{sec:flow}
 
-\subsection{Potential-flow slice}
-A 2D slice solves a discrete Laplace problem for a streamfunction or potential on a masked grid, then recovers $\mathbf{u}=\nabla\phi$ (or the streamfunction equivalent).
+A 2D slice solves a discrete Laplace problem on a masked grid and recovers a velocity field from the potential or streamfunction.
 Inlet / far-field velocity is prescribed; building cells are solid.
-This produces cheap acceleration around corners (Fig.~\ref{fig:flow}).
-
+This is cheap and produces acceleration around corners (Fig.~\ref{fig:flow}).
 It cannot represent viscous separation, vortex shedding, or turbulence.
-Empirical wall damping and downstream wake patches are therefore added for drone-risk realism and must be labelled as such.
+Empirical wall damping and downstream wake patches are therefore added for drone-risk texture and must be named as such.
 
-\subsection{True 3D overlay}
-A voxel potential-flow field supplies $u,v,w$ streamlines for visualization.
-The flyable 3D aircraft still samples the live horizontal CFD-lite grid.
-No Navier--Stokes residual is claimed for either field.
+A voxel potential-flow field can supply $u,v,w$ streamlines for visualization.
+The flyable aircraft still samples the live horizontal CFD-lite grid.
+No Navier--Stokes residual is claimed.
 
 \begin{figure}[t]
   \centering
@@ -115,59 +124,134 @@ No Navier--Stokes residual is claimed for either field.
   \label{fig:flow}
 \end{figure}
 
+\section{Quadratic air-relative drag}
+\label{sec:drag}
+
+Let $\mathbf{v}_{\mathrm{g}}$ be ground velocity and $\mathbf{w}$ the hidden local wind.
+Relative air velocity is
+\begin{equation}
+  \mathbf{v}_{\mathrm{air}} = \mathbf{v}_{\mathrm{g}} - \mathbf{w}.
+\end{equation}
+Parasite force and power use the standard quadratic law
+\begin{equation}
+  \mathbf{F}_{\mathrm{p}} = -\tfrac12\rho C_d A \lVert\mathbf{v}_{\mathrm{air}}\rVert \mathbf{v}_{\mathrm{air}},
+  \qquad
+  P_{\mathrm{p}} = \tfrac12\rho C_d A \lVert\mathbf{v}_{\mathrm{air}}\rVert^3.
+\end{equation}
+The flyable integrators apply an implicit step that is unconditionally stable at the 120\,Hz cockpit rate and at the larger diagnostic steps used in collision tests:
+\begin{equation}
+  \mathbf{v}_{\mathrm{air}}^{+}
+  =
+  \frac{\mathbf{v}_{\mathrm{air}}}{1+\Delta t\bigl(k\lVert\mathbf{v}_{\mathrm{air}}\rVert+c\bigr)},
+  \qquad
+  k=\frac{\rho C_d A}{2m}.
+\end{equation}
+With thrust off, the only equilibrium is $\mathbf{v}_{\mathrm{g}}=\mathbf{w}$.
+That is the difference from the previous linear ground-velocity damper, which stopped the vehicle in still air even inside a wind field.
+
+Induced power uses momentum theory, not blade element:
+\begin{equation}
+  v_h=\sqrt{\frac{W}{2\rho A_{\mathrm{disk}}}},
+  \qquad
+  P_{\mathrm{i}}
+  =
+  \frac{\kappa W v_h}{\sqrt{1+(\lVert\mathbf{v}_{\mathrm{air}}\rVert/v_h)^2}}.
+\end{equation}
+Total electrical-equivalent power is avionics + sensors + $P_{\mathrm{p}}$ + $P_{\mathrm{i}}$ + climb $W\max(v_z,0)$.
+Default constants: $m=2.5$\,kg, $\rho=1.225$\,kg/m$^3$, $C_d=1.05$, $A=0.18$\,m$^2$, four 0.15\,m propellers, $\kappa=1.15$.
+Then $k=0.0463$\,m$^{-1}$.
+
+UrbanFlow Gym still uses a linear wind-drag gain by default so the published RL contract does not silently change.
+The quadratic core is shared by the cockpit, a Python module, and a Unity C\# port of the same formulas.
+The Unity file is not a scene rewrite.
+
 \section{Sensing and the actor contract}
 
 Frontend LiDAR prototypes use a frozen five-value-per-ray layout
-\[
-  (d_x,d_y,d_z,\hat{r},h),
-\]
+$(d_x,d_y,d_z,\hat r,h)$:
 local direction, normalized range, and hit flag.
-3D default: 600 Fibonacci-sphere samples, 120\,m max range.
+3D default: 600 Fibonacci-sphere samples, 120\,m.
 2D default: 180 rays, 180\,m.
+Ground is a real target: downward rays intersect $y=0$ and take the nearer of ground and buildings.
 
-UrbanFlow Gym uses a separate 33-scalar actor observation: own motion, goal context, fixed-angle geometry LiDAR, known inlet, previous action, and an onboard relative-air estimate.
-Automated leakage guards reject full grids, exact wakes, future samples, and provider objects in the actor channel.
+UrbanFlow Gym uses a 33-scalar actor observation: own motion, goal context, fixed-angle geometry LiDAR, known inlet, previous action, and an onboard relative-air estimate.
+Automated leakage guards reject full grids, exact wakes, future samples, and provider objects.
 A privileged critic helper exists and is never returned by \texttt{reset}/\texttt{step}.
 
 \section{UrbanFlow Gym}
-\label{sec:gym}
 
-The core environment is NumPy-only.
-Gymnasium / Stable-Baselines3 / Torch are optional extras and are not imported on the default path.
-Action is a bounded 2D local-guidance command in the vehicle frame, not motor RPM.
-
-Three deterministic baselines share the public mission context only:
+The core is NumPy-only.
+Action is a bounded 2D local-guidance command, not motor RPM.
+Three deterministic baselines share only public mission context:
 \begin{enumerate}
-  \item \textbf{Direct goal}: steer toward the goal (no obstacle planner).
-  \item \textbf{Shortest path}: geometry-safe A* + waypoint tracking.
-  \item \textbf{Inlet-aware}: A* with known-inlet feed-forward. Still \emph{not} privileged-grid access.
+  \item Direct goal (no obstacle planner).
+  \item Geometry-safe A* + waypoint tracking.
+  \item Inlet-aware A* with known-inlet feed-forward. Still not privileged-grid access.
 \end{enumerate}
-
 Live evaluation binds to the exact UI-registered OSM scenario.
-The showcase below uses the synthetic rectangular fixture so that open-source CI needs no network.
+Section~\ref{sec:gymcase} uses the synthetic rectangular fixture so the committed study needs no network.
 
-\section{Showcase case}
-\label{sec:showcase}
+\section{Study A: drag essence}
+\label{sec:dragcase}
 
-Command (repo root, no network):
+Command:
+\begin{verbatim}
+PYTHONPATH=backend python scripts/render_paper_figures.py
+\end{verbatim}
+The same core is also exercised by \texttt{scripts/run\_drag\_essence\_demo.py}.
+
+\paragraph{Still-air power split.}
+Figure~\ref{fig:power} integrates the analytic power model over $\lvert\mathbf{v}_{\mathrm{air}}\rvert\in[0,18]$\,m/s.
+Hover total power is $362$\,W.
+The minimum is $350$\,W at $5.2$\,m/s.
+At $11$\,m/s the total is $427$\,W: induced has fallen, parasite has risen.
+This is the expected U-shape of a coarse momentum-plus-parasite model, not a fitted motor map.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.78\linewidth]{figures/fig_power_curve.png}
+  \caption{Still-air power versus relative airspeed.
+  Induced falls, parasite rises.
+  Not blade-element theory.}
+  \label{fig:power}
+\end{figure}
+
+\paragraph{Same thrust, three winds.}
+A constant $8$\,m/s$^2$ body thrust is integrated for $8$\,s at $\Delta t=1/120$\,s (Fig.~\ref{fig:wind}, left).
+Final ground speeds: tailwind $+6$\,m/s $\rightarrow$ $16.4$\,m/s; still air $\rightarrow$ $10.4$\,m/s; headwind $-6$\,m/s $\rightarrow$ $4.4$\,m/s.
+Integrated energy: $3116$\,J, $3151$\,J, $3203$\,J.
+Headwind is slower and costlier.
+The energy gap is modest because the run is short and induced still dominates at these speeds; the speed gap is not.
+
+\paragraph{Stick-off.}
+Zero thrust in an $8$\,m/s wind reaches $7.28$\,m/s ground speed in $6$\,s (Fig.~\ref{fig:wind}, right).
+The vehicle is drifting with the air, not parking in the world frame.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.98\linewidth]{figures/fig_wind_response.png}
+  \caption{Left: identical thrust in tailwind, still air, and headwind.
+  Right: thrust off; ground speed approaches the local wind.}
+  \label{fig:wind}
+\end{figure}
+
+\section{Study B: Gym fixture}
+\label{sec:gymcase}
+
+Command (no network):
 \begin{verbatim}
 PYTHONPATH=backend python scripts/run_oss_showcase.py
 \end{verbatim}
-Artifacts: \texttt{docs/showcase/}.
-
-\subsection{Potential-flow field}
-Toy city, five buildings, inlet from $270^\circ$ at 5\,m/s (Fig.~\ref{fig:flow}).
-
-\subsection{Baseline comparison}
-Three held-out fixture seeds $\{10007,10009,10037\}$, horizon 240 steps, $\Delta t=0.25$\,s.
-Table~\ref{tab:eval} and Figs.~\ref{fig:traj}--\ref{fig:metrics}.
+Seeds $\{10007,10009,10037\}$, horizon 240 steps, $\Delta t=0.25$\,s.
+Policy status: NOT TRAINED.
+Privileged flow access: false.
+Hidden dynamics: synthetic potential-flow-ish wake proxy, not Navier--Stokes.
+Evaluation id: \texttt{24ec026f3352e4f9}.
 
 \begin{table}[t]
 \centering
 \caption{UrbanFlow Gym synthetic-fixture evaluation.
-Policy status: NOT TRAINED.
-Privileged flow access: false.
-Hidden dynamics: synthetic potential-flow-ish wake proxy, not Navier--Stokes.}
+Inlet-aware is not energy-better on this set; the regression is reported, not hidden.}
 \label{tab:eval}
 \begin{tabular}{lcccc}
 \toprule
@@ -182,10 +266,10 @@ Inlet-aware A* & $3/3$ & $141.9$ & $1303$ & $0/3$ \\
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=0.88\linewidth]{figures/fig_trajectories.png}
-  \caption{Seed 10007 rollouts on the synthetic fixture.
+  \includegraphics[width=0.86\linewidth]{figures/fig_trajectories.png}
+  \caption{Seed 10007.
   Direct goal collides.
-  Both planners reach the goal without building hits.
+  Both planners reach the goal.
   Actor observation dimension is 33.}
   \label{fig:traj}
 \end{figure}
@@ -194,23 +278,24 @@ Inlet-aware A* & $3/3$ & $141.9$ & $1303$ & $0/3$ \\
   \centering
   \includegraphics[width=\linewidth]{figures/fig_metrics.png}
   \caption{Aggregate fixture metrics.
-  Inlet-aware is not energy-better than shortest path on this set; we report the regression rather than force a narrative.}
+  Geometry, not inlet heuristics, is what separates success from collision here.}
   \label{fig:metrics}
 \end{figure}
 
-\paragraph{Reading.}
-The showcase is a \emph{contract test}, not a claim that wind-aware planning wins.
-A successful OSS demo must show (i) collisions when geometry is ignored, (ii) success when it is not, (iii) no privileged-grid leakage, and (iv) honest labels.
+The showcase is a contract test.
+A successful public demo must show (i) collisions when geometry is ignored, (ii) success when it is not, (iii) no privileged-grid leakage, and (iv) honest labels.
 
 \section{Limitations}
 
 \begin{itemize}
   \item CFD-lite and voxel potential flow are not LES/RANS/DNS.
   \item True 3D Wind is a visualization overlay.
+  \item Flyable motion is a damped point-mass with quadratic air drag, not rotor flapping or blade-element moments~\cite{hoffmann2007quadrotor}.
   \item LiDAR and rolling maps are simulator rays plus odometry, not hardware SLAM.
-  \item No PPO/SAC training is shipped; ``RL-ready'' $\neq$ ``trained.''
-  \item Live OSM/weather paths need network; the committed showcase does not.
-  \item Presentation trees/roads never enter physics, sensors, Gym, or scenario hashes.
+  \item No PPO/SAC training is shipped.
+  \item Live OSM/weather paths need network; the committed Gym showcase does not.
+  \item Presentation geometry never enters physics.
+  \item Gym still uses linear wind drag by default.
 \end{itemize}
 
 \section{Reproducibility}
@@ -218,22 +303,29 @@ A successful OSS demo must show (i) collisions when geometry is ignored, (ii) su
 \begin{itemize}
   \item Code: \url{https://github.com/VortexyAether/Urban_Flighter}
   \item License: MIT.
-  \item Showcase seed and command: Section~\ref{sec:showcase}.
-  \item Evaluation id of the reported JSON: \texttt{24ec026f3352e4f9}.
+  \item Drag figures: Section~\ref{sec:dragcase}.
+  \item Gym figures and Table~\ref{tab:eval}: Section~\ref{sec:gymcase}.
+  \item Paper figures: \texttt{paper/figures/}, metrics in \texttt{paper/figures/paper\_figure\_metrics.json}.
 \end{itemize}
 
 \section{Conclusion}
 
-Urban Flighter is released as an open urban-air research cockpit: real cities when requested, cheap hidden flow, and a deliberately narrow actor contract.
-The first public case study is intentionally boring and checkable.
+Urban Flighter is an open urban-air research cockpit: real cities when requested, cheap hidden flow, quadratic air-relative drag in the flyable loop, and a deliberately narrow actor contract.
+The public numbers are intentionally small and checkable.
 That is the point.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
 
 \appendix
 \section{Software map}
-\texttt{backend/} FastAPI and CFD-lite services;
-\texttt{backend/urbanflow\_gym/} headless env;
-\texttt{frontend/} React 19 + Three.js;
-\texttt{scripts/run\_oss\_showcase.py} this paper's case;
-\texttt{CLAUDE.md} contributor contract.
+{\raggedright
+\texttt{backend/} FastAPI and CFD-lite;\\
+\texttt{backend/urban\_flighter\_physics/} shared drag;\\
+\texttt{backend/urbanflow\_gym/} headless env;\\
+\texttt{frontend/src/simulation/quadraticAirDrag.ts} cockpit twin;\\
+\texttt{unity/UrbanFlighterDrag/} formula port only;\\
+\texttt{scripts/render\_paper\_figures.py} and \texttt{scripts/run\_oss\_showcase.py} this paper.
+\par}
 
 \end{document}

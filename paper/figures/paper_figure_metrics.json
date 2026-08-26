@@ -1,0 +1,27 @@
+{
+  "power": {
+    "hover_total_w": 361.6310463294507,
+    "min_total_w": 349.82820738643056,
+    "min_speed_mps": 5.2,
+    "cruise11_total_w": 426.5460407453278
+  },
+  "wind": {
+    "tail_final_mps": 16.436342325334067,
+    "still_final_mps": 10.437314913704983,
+    "head_final_mps": 4.437853780091066,
+    "tail_energy_j": 3116.232045187064,
+    "still_energy_j": 3151.4818134867696,
+    "head_energy_j": 3203.2251627998335,
+    "hover_final_mps": 7.280369649068519,
+    "k_per_m": 0.046305,
+    "model_id": "quadratic-air-relative-v1"
+  },
+  "figures": [
+    "fig_architecture.png",
+    "fig_metrics.png",
+    "fig_potential_flow.png",
+    "fig_power_curve.png",
+    "fig_trajectories.png",
+    "fig_wind_response.png"
+  ]
+}

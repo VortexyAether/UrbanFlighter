@@ -65,7 +65,7 @@ try {
     [thinWall],
     { min_x: -100, max_x: 100, min_y: -100, max_y: 100 },
     0.5,
-    { maxSpeed: 200, thrust: 0, dragPerSecond: 0, collisionRadius: 1 },
+    { maxSpeed: 200, thrust: 0, dragPerSecond: 0, quadraticAirDragPerM: 0, linearAirDragPerS: 0, collisionRadius: 1 },
   );
   if (
     stopped.position.x < -1.01
@@ -84,7 +84,7 @@ try {
     [block],
     { min_x: -100, max_x: 100, min_y: -100, max_y: 100 },
     0.5,
-    { maxSpeed: 200, thrust: 0, dragPerSecond: 0, collisionRadius: 1 },
+    { maxSpeed: 200, thrust: 0, dragPerSecond: 0, quadraticAirDragPerM: 0, linearAirDragPerS: 0, collisionRadius: 1 },
   );
   if (
     sliding.position.x < 4.99
@@ -141,10 +141,75 @@ try {
     throw new Error('Long-frame catch-up exceeded or failed to reach its explicit step budget.');
   }
 
+  const {
+    integrateQuadraticAirDrag2,
+    evaluatePhysicalDragPower,
+    QUAD_AIR_DRAG,
+  } = await vite.ssrLoadModule('/src/simulation/quadraticAirDrag.ts');
+  const { calculateDragEnergy } = await vite.ssrLoadModule('/src/utils/dragEnergy.ts');
+
+  let drift = { x: 0, y: 0 };
+  const wind = { x: 8, y: 0 };
+  for (let step = 0; step < 720; step += 1) {
+    drift = integrateQuadraticAirDrag2(drift, wind, 1 / 120);
+  }
+  if (Math.abs(drift.x - 8) > 1.2 || Math.abs(drift.y) > 1e-6) {
+    throw new Error(`Zero-thrust hover must drift toward local wind, got ${JSON.stringify(drift)}.`);
+  }
+
+  function cruise(windX) {
+    let state = { position: { x: 0, y: 0 }, velocity: { x: 0, y: 0 }, heading: 0 };
+    let energy = 0;
+    for (let step = 0; step < 360; step += 1) {
+      state = stepFlight2DMotion(
+        state,
+        { x: 1, y: 0 },
+        { x: windX, y: 0 },
+        [],
+        { min_x: -1e6, max_x: 1e6, min_y: -1e6, max_y: 1e6 },
+        1 / 120,
+        { collisionRadius: 0 },
+      );
+      energy += calculateDragEnergy(
+        { x: state.velocity.x, y: 0, z: state.velocity.y },
+        { x: windX, y: 0, z: 0 },
+      ).totalPowerW / 120;
+    }
+    return { speed: Math.hypot(state.velocity.x, state.velocity.y), energy };
+  }
+  const tail = cruise(6);
+  const head = cruise(-6);
+  if (!(tail.speed > head.speed + 1.5)) {
+    throw new Error(`Tailwind must be faster than headwind: tail=${tail.speed} head=${head.speed}.`);
+  }
+  if (!(head.energy > tail.energy * 1.05)) {
+    throw new Error(`Headwind must burn more energy: tail=${tail.energy} head=${head.energy}.`);
+  }
+
+  const hoverPower = evaluatePhysicalDragPower({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+  const cruisePower = evaluatePhysicalDragPower({ x: 11, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+  if (!(hoverPower.inducedPowerW > cruisePower.inducedPowerW)) {
+    throw new Error('Induced power must fall from hover to forward flight.');
+  }
+  if (!(cruisePower.parasitePowerW > hoverPower.parasitePowerW + 10)) {
+    throw new Error('Parasite power must rise with airspeed.');
+  }
+  if (QUAD_AIR_DRAG.modelId !== 'quadratic-air-relative-v1') {
+    throw new Error('Unexpected drag model id.');
+  }
+
   console.log(JSON.stringify({
     status: 'ok',
-    tests: 5,
-    contract: 'cardinal bearings, swept thin-wall collision, facade sliding, 30/60/144 Hz equivalence, bounded catch-up',
+    tests: 8,
+    contract: 'cardinal bearings, swept thin-wall collision, facade sliding, 30/60/144 Hz equivalence, bounded catch-up, wind-follow hover, headwind vs tailwind, induced/parasite split',
+    drag: {
+      hoverDriftX: drift.x,
+      tailSpeed: tail.speed,
+      headSpeed: head.speed,
+      tailEnergy: tail.energy,
+      headEnergy: head.energy,
+      model: QUAD_AIR_DRAG.modelId,
+    },
   }));
 } finally {
   await vite.close();
