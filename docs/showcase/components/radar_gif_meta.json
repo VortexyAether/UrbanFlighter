@@ -1,0 +1,7 @@
+{
+  "captured_kst": "2026-09-01",
+  "file": "radar_3d_nyc.gif",
+  "frames": 36,
+  "interval_ms": 140,
+  "note": "3D rolling sensor map while holding W/Space and a short A/D turn. SIM odometry only."
+}

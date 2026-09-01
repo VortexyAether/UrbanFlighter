@@ -25,6 +25,7 @@ Captured 2026-09-01 from the running cockpit (`frontend :5173` + `backend :8000`
 # recapture the README live figures (default city is NYC)
 # backend :8000 and frontend :5173 must already be up
 node scripts/capture_live_shots.mjs
+node scripts/capture_radar_gif.mjs   # rolling sensor-map GIF while flying
 ```
 
 ### 1. geometry loader — `backend/services/geometry.py`
@@ -47,9 +48,9 @@ Open-Meteo current 10 m `wind_speed_10m` / `wind_direction_10m` in m/s. If the f
 
 ### 4. radar — `LocalReturns2D.tsx` / `LocalReturnsRadar.tsx`
 
-Deterministic simulator rays vs OSM collision meshes (3D also hits `y=0` ground). Rolling map = **SIM odometry · no loop closure**. This capture: **325 hits**.
+Deterministic simulator rays vs OSM collision meshes (3D also hits `y=0` ground). Rolling map = **SIM odometry · no loop closure**. The GIF is the same window while the aircraft holds W/Space and a short A/D turn; hits stay in the ~322–325 range.
 
-![3D rolling sensor map, 325 hits, no loop closure](docs/showcase/components/radar_3d_nyc.png)
+![3D rolling sensor map while flying, SIM odometry only](docs/showcase/components/radar_3d_nyc.gif)
 
 2D status bar only (no floating panels):
 
@@ -69,23 +70,7 @@ Writes `docs/showcase/`.
 
 ![Potential-flow CFD-lite toy city](docs/showcase/potential_flow_toy/potential_flow_streamlines.png)
 
-**UrbanFlow Gym fixture · seed 10007 · NOT TRAINED** — direct goal collides; geometry-safe A* and inlet-aware A* both succeed. Actor observation is 49-D (LiDAR + simulated radar, inlet-only relative air).
-
-![Gym fixture trajectories](docs/showcase/gym_fixture_trajectories.png)
-
-**3 seeds {10007, 10009, 10037}, 240 steps** (hidden synthetic flow + quadratic drag, `policy_full_flow_access=false`):
-
-| Baseline | Success | Mean path (m) | Rel-air energy | Collision eps. |
-| --- | --- | --- | --- | --- |
-| Direct goal | 0/3 | 23.9 | 158 | 3/3 |
-| Shortest-path A* | 3/3 | 141.5 | 1099 | 0/3 |
-| Inlet-aware A* | 3/3 | 141.3 | 1135 | 0/3 |
-
-Inlet-aware is **not** energy-better here. That regression is part of the demo.
-
-![Gym fixture metrics](docs/showcase/gym_fixture_metrics.png)
-
-Reproduce numbers: `docs/showcase/showcase_summary.json`.
+UrbanFlow Gym path-tracking figures are omitted here. The contract stays `NOT TRAINED`; see the Gym section below.
 
 ## Quick start (interactive cockpit)
 
