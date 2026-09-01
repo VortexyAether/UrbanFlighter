@@ -42,6 +42,7 @@ interface Simulation3DProps {
   presentationMode: boolean;
   onPresentationModeChange: (enabled: boolean) => void;
   hideFlightHud?: boolean;
+  showcaseFraming?: boolean;
 }
 
 const DEFAULT_BOUNDS: Flight3DBounds = { min_x: -400, max_x: 400, min_y: -400, max_y: 400 };
@@ -104,6 +105,7 @@ export default function Simulation3D({
   presentationMode,
   onPresentationModeChange,
   hideFlightHud = false,
+  showcaseFraming = false,
 }: Simulation3DProps) {
   const [aircraftMetrics, setAircraftMetrics] = useState<AircraftMetrics | null>(null);
   const [true3DOverlayStatus, setTrue3DOverlayStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -215,9 +217,10 @@ export default function Simulation3D({
             flow={flow}
             height={2.4}
             showContour
-            showArrows={false}
+            showArrows={showcaseFraming}
             showStreamlines
-            altitudeLevels={CFD_ALTITUDE_LEVELS}
+            altitudeLevels={showcaseFraming ? [18, 28, 42] : CFD_ALTITUDE_LEVELS}
+            showcase={showcaseFraming}
           />
         )}
         <Aircraft
@@ -245,6 +248,9 @@ export default function Simulation3D({
           pitch={aircraftMetrics?.pitch ?? 0}
           enabled={followCamera}
           buildings={buildings}
+          distance={showcaseFraming ? 22 : undefined}
+          height={showcaseFraming ? 9.2 : undefined}
+          lookAhead={showcaseFraming ? 14 : undefined}
         />
       </ThreeCanvas>
       {!hideFlightHud && (

@@ -12,6 +12,7 @@ interface CFDLiteWindLayerProps {
   showContour?: boolean;
   showArrows?: boolean;
   showStreamlines?: boolean;
+  showcase?: boolean;
 }
 
 interface StreamlinePath {
@@ -113,6 +114,7 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
   showContour = false,
   showArrows = false,
   showStreamlines = true,
+  showcase = false,
 }) => {
   const maxSpeed = Math.max(flow?.field.stats.max_speed_mps ?? flow?.inlet.speed_mps ?? 8, 1);
   const levels = useMemo(() => altitudeLevels && altitudeLevels.length > 0 ? altitudeLevels : [height], [altitudeLevels, height]);
@@ -187,7 +189,7 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
     if (!hasResolvedFlowGrid(flow)) return [];
     const { field } = flow;
     const lines: StreamlinePath[] = [];
-    const seedsPerLayer = 36;
+    const seedsPerLayer = showcase ? 52 : 36;
     const direction = new THREE.Vector2(flow.inlet.ux, flow.inlet.uy).normalize();
     const useXEdge = Math.abs(direction.x) >= Math.abs(direction.y);
     const step = Math.max(field.cell_size_m * 0.95, 2.4);
@@ -236,7 +238,7 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
       }
     });
     return lines;
-  }, [flow, levels]);
+  }, [flow, levels, showcase]);
 
   if (!hasResolvedFlowGrid(flow)) return null;
 
@@ -244,7 +246,7 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
     <group name="CFD-lite B wind streamlines">
       {showContour && contourGeometry && (
         <mesh geometry={contourGeometry}>
-          <meshBasicMaterial vertexColors transparent opacity={0.34} side={THREE.DoubleSide} depthWrite={false} />
+          <meshBasicMaterial vertexColors transparent opacity={showcase ? 0.48 : 0.34} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
       )}
       {showArrows && arrows.map((arrow, idx) => (
@@ -258,9 +260,9 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
           key={`stream-${idx}`}
           points={line.points}
           color={`#${makeColor(line.speed, maxSpeed).offsetHSL(0, -0.08, line.layerIndex % 2 === 0 ? 0.08 : -0.02).getHexString()}`}
-          lineWidth={1.2}
+          lineWidth={showcase ? 1.85 : 1.2}
           transparent
-          opacity={0.56}
+          opacity={showcase ? 0.78 : 0.56}
           depthWrite={false}
         />
       ))}

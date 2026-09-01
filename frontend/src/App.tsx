@@ -22,12 +22,12 @@ import { useUrbanFlighterData } from './hooks/useUrbanFlighterData';
 import './App.css';
 
 type CockpitWindow = 'map' | 'telemetry' | 'slam' | 'inspector';
-type ShotKind = '2d' | '3d' | 'map' | 'radar' | 'cockpit';
+type ShotKind = '2d' | '3d' | 'map' | 'radar' | 'split' | 'cockpit';
 
 function readShotKind(): ShotKind | null {
   if (typeof window === 'undefined') return null;
   const value = new URLSearchParams(window.location.search).get('shot');
-  return value === '2d' || value === '3d' || value === 'map' || value === 'radar' || value === 'cockpit'
+  return value === '2d' || value === '3d' || value === 'map' || value === 'radar' || value === 'split' || value === 'cockpit'
     ? value
     : null;
 }
@@ -370,7 +370,7 @@ function App() {
   const [windows, setWindows] = useState<Record<CockpitWindow, boolean>>(() => ({
     map: shot === 'map' || shot == null,
     telemetry: shot == null,
-    slam: shot === 'radar' || shot == null,
+    slam: shot === 'radar' || shot === 'split' || shot == null,
     inspector: false,
   }));
   const [activeWindow, setActiveWindow] = useState<CockpitWindow>('slam');
@@ -407,11 +407,15 @@ function App() {
 
   useEffect(() => {
     if (!shot) return;
-    if (shot === '3d' || shot === 'radar') {
+    if (shot === '3d' || shot === 'radar' || shot === 'split') {
       handleSimulationModeSelect('3d');
       setPresentationMode(true);
     }
-    setShowLidar(shot === 'radar' || shot === 'cockpit');
+    if (shot === 'split') {
+      setShowFlowAnimation(true);
+      setFollowCamera(true);
+    }
+    setShowLidar(shot === 'radar' || shot === 'split' || shot === 'cockpit');
     // Intentionally once per shot URL. handleSimulationModeSelect is not stable
     // and must not retrigger /flow-fields/2d on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -430,7 +434,7 @@ function App() {
     if (visible) setActiveWindow(windowName);
   };
 
-  const hideChrome = shot === '2d' || shot === '3d' || shot === 'radar';
+  const hideChrome = shot === '2d' || shot === '3d' || shot === 'radar' || shot === 'split';
 
   return (
     <div
@@ -460,7 +464,8 @@ function App() {
           onControlPresetChange={setControlPreset}
           presentationMode={presentationMode}
           onPresentationModeChange={setPresentationMode}
-          hideFlightHud={shot === '3d'}
+          hideFlightHud={shot === '3d' || shot === 'split'}
+          showcaseFraming={shot === 'split'}
           onLidarTelemetry={(lidar) => setTelemetry((previous) => ({ ...previous, lidar: lidar ?? undefined }))}
         />
       )}

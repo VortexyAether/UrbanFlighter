@@ -19,7 +19,7 @@ Open-source **urban drone flight simulator**: real OSM buildings, forecast-model
 
 ## Components (live, not mockups)
 
-Captured 2026-09-01 from the running cockpit (`frontend :5173` + `backend :8000`) with chrome-hidden `?shot=2d|3d|map|radar|cockpit` views. Domain: **Midtown Manhattan / Times Square** `40.7580, -73.9855`. That session: `BACKEND OK`, **179 OSM buildings / 400 m**, inlet **1.9 m/s from 215°** (Open-Meteo forecast-model current), HUD `CFD-LITE B GRID`, wall `impermeable_slip`.
+Captured 2026-09-01 from the running cockpit (`frontend :5173` + `backend :8000`) with chrome-hidden `?shot=2d|3d|map|radar|split|cockpit` views. Domain: **Midtown Manhattan / Times Square** `40.7580, -73.9855`. That session: `BACKEND OK`, **179 OSM buildings / 400 m**, inlet **1.9 m/s from 215°** (Open-Meteo forecast-model current), HUD `CFD-LITE B GRID`, wall `impermeable_slip`.
 
 ```bash
 # recapture the README live figures (default city is NYC)
@@ -48,9 +48,9 @@ Open-Meteo current 10 m `wind_speed_10m` / `wind_direction_10m` in m/s. If the f
 
 ### 4. radar — `LocalReturns2D.tsx` / `LocalReturnsRadar.tsx`
 
-Deterministic simulator rays vs OSM collision meshes (3D also hits `y=0` ground). Rolling map = **SIM odometry · no loop closure**. The GIF is the same window while the aircraft holds W/Space and a short A/D turn; hits stay in the ~322–325 range.
+Deterministic simulator rays vs OSM collision meshes (3D also hits `y=0` ground). Rolling map = **SIM odometry · no loop closure**. The GIF is a split view (`?shot=split`): left is 3D Lite with the aircraft and CFD-lite streamlines, right is the same rolling map while it holds W/Space and a short A/D turn.
 
-![3D rolling sensor map while flying, SIM odometry only](docs/showcase/components/radar_3d_nyc.gif)
+![3D Lite + CFD-lite flow on the left, rolling sensor map on the right](docs/showcase/components/radar_3d_nyc.gif)
 
 2D status bar only (no floating panels):
 
