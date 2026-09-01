@@ -56,13 +56,13 @@ function treeTransforms(trees: readonly TreeProp[]) {
       position: [tree.x, tree.height * 0.68, -tree.y] as [number, number, number],
       rotation: [0, tree.rotation, 0] as [number, number, number],
       scale: [tree.canopyRadius, tree.height * 0.24, tree.canopyRadius] as [number, number, number],
-      color: tree.tone > 0.66 ? '#679068' : tree.tone > 0.32 ? '#59825e' : '#4d7655',
+      color: tree.tone > 0.66 ? '#4f5b48' : tree.tone > 0.32 ? '#455240' : '#3c4938',
     })),
     upperCanopies: trees.map((tree) => ({
       position: [tree.x, tree.height * 0.87, -tree.y] as [number, number, number],
       rotation: [0, -tree.rotation * 0.7, 0] as [number, number, number],
       scale: [tree.canopyRadius * 0.76, tree.height * 0.2, tree.canopyRadius * 0.76] as [number, number, number],
-      color: tree.tone > 0.5 ? '#79a273' : '#639365',
+      color: tree.tone > 0.5 ? '#5a6652' : '#4d5947',
     })),
   };
 }
@@ -112,10 +112,10 @@ function facadePanelTransforms(panels: readonly FacadePanelProp[]) {
     rotation: [0, panel.rotation, 0] as [number, number, number],
     scale: [panel.width, panel.height, 0.055] as [number, number, number],
     color: panel.tone > 0.72
-      ? '#d5b780'
+      ? '#2f3940'
       : panel.tone > 0.38
-        ? '#86a7b2'
-        : '#506b75',
+        ? '#4a555c'
+        : '#6d6458',
   }));
 }
 
@@ -137,11 +137,11 @@ function TreeInstances({ trees }: { trees: readonly TreeProp[] }) {
       </instancedMesh>
       <instancedMesh ref={lowerRef} args={[undefined, undefined, trees.length]} castShadow receiveShadow>
         <icosahedronGeometry args={[1, 1]} />
-        <meshStandardMaterial vertexColors roughness={0.91} metalness={0} emissive="#203b25" emissiveIntensity={0.12} />
+        <meshStandardMaterial vertexColors roughness={0.94} metalness={0} />
       </instancedMesh>
       <instancedMesh ref={upperRef} args={[undefined, undefined, trees.length]} castShadow receiveShadow>
         <icosahedronGeometry args={[1, 1]} />
-        <meshStandardMaterial vertexColors roughness={0.88} metalness={0} emissive="#26472b" emissiveIntensity={0.12} />
+        <meshStandardMaterial vertexColors roughness={0.93} metalness={0} />
       </instancedMesh>
     </group>
   );
@@ -235,10 +235,8 @@ function FacadePanelInstances({ panels }: { panels: readonly FacadePanelProp[] }
       <boxGeometry args={[1, 1, 1]} />
       <meshStandardMaterial
         vertexColors
-        roughness={0.24}
-        metalness={0.42}
-        emissive="#6f8990"
-        emissiveIntensity={0.1}
+        roughness={0.18}
+        metalness={0.55}
       />
     </instancedMesh>
   );
@@ -261,7 +259,7 @@ function UrbanDressing({ layout }: UrbanDressingProps) {
         >
           <boxGeometry args={[band.length, 0.025, band.width]} />
           <meshStandardMaterial
-            color={band.tone > 0.5 ? '#31383a' : '#2c3335'}
+            color={band.tone > 0.5 ? '#2a2b2a' : '#242524'}
             roughness={0.98}
             metalness={0.01}
           />

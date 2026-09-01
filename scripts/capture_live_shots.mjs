@@ -11,11 +11,11 @@ const outDir = join(root, 'docs/showcase/components');
 const paperDir = join(root, 'paper/figures');
 
 const shots = [
-  { kind: '2d', file: 'simplecfd_2d_field_inha.png', paper: 'fig_live_2d.png', settleMs: 2200 },
-  { kind: '3d', file: 'cockpit_3d_lite_inha.png', paper: 'fig_live_3d.png', settleMs: 3800 },
-  { kind: 'map', file: 'geometry_loader_map_inha.png', paper: 'fig_live_map.png', selector: '.panel-map', settleMs: 1800 },
-  { kind: 'radar', file: 'radar_3d_inha.png', paper: 'fig_live_radar.png', selector: '.slam-window', settleMs: 4200 },
-  { kind: 'cockpit', file: 'cockpit_2d_inha.png', settleMs: 1800 },
+  { kind: '2d', file: 'simplecfd_2d_field_nyc.png', settleMs: 2200 },
+  { kind: '3d', file: 'cockpit_3d_lite_nyc.png', settleMs: 3800 },
+  { kind: 'map', file: 'geometry_loader_map_nyc.png', selector: '.panel-map', settleMs: 1800 },
+  { kind: 'radar', file: 'radar_3d_nyc.png', selector: '.slam-window', settleMs: 4200 },
+  { kind: 'cockpit', file: 'cockpit_2d_nyc.png', settleMs: 1800 },
 ];
 
 async function waitReady(page, shot) {
@@ -77,7 +77,7 @@ const meta = {
   captured_kst: new Date().toISOString().slice(0, 10),
   frontend,
   backend: 'http://127.0.0.1:8000',
-  location: { name: 'Inha/Incheon', lat: 37.451448, lon: 126.651542 },
+  location: { name: 'Midtown Manhattan / Times Square', lat: 40.758, lon: -73.9855 },
   viewport: { width: 1600, height: 900, deviceScaleFactor: 2 },
   buildings: captured[0]?.buildings ?? 0,
   files: captured.map((row) => row.file),

@@ -223,10 +223,67 @@ function buildObstacles(buildings: BuildingData[]): FlowObstacle[] {
     });
 }
 
+function obstacleContaining(point: Vec2, obstacles: FlowObstacle[]): FlowObstacle | null {
+  for (const obstacle of obstacles) {
+    if (
+      point.x < obstacle.minX || point.x > obstacle.maxX
+      || point.y < obstacle.minY || point.y > obstacle.maxY
+    ) {
+      continue;
+    }
+    if (pointInPolygon(point, obstacle.footprint)) return obstacle;
+  }
+  return null;
+}
+
+function segmentHitsObstacle(start: Vec2, end: Vec2, obstacles: FlowObstacle[]): boolean {
+  if (obstacleContaining(end, obstacles)) return true;
+  const span = Math.hypot(end.x - start.x, end.y - start.y);
+  const steps = Math.max(2, Math.ceil(span / 1.15));
+  for (let i = 1; i < steps; i += 1) {
+    const t = i / steps;
+    if (obstacleContaining({ x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t }, obstacles)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function applyImpermeableSlip(velocity: Vec2, point: Vec2, obstacles: FlowObstacle[]): Vec2 {
+  let nearestDist = Infinity;
+  let normal = { x: 0, y: 0 };
+  for (const obstacle of obstacles) {
+    const pad = 10;
+    if (
+      point.x < obstacle.minX - pad || point.x > obstacle.maxX + pad
+      || point.y < obstacle.minY - pad || point.y > obstacle.maxY + pad
+    ) {
+      continue;
+    }
+    for (let i = 0; i < obstacle.footprint.length; i += 1) {
+      const candidate = distanceToSegment(point, obstacle.footprint[i], obstacle.footprint[(i + 1) % obstacle.footprint.length]);
+      if (candidate.dist >= nearestDist) continue;
+      nearestDist = candidate.dist;
+      normal = normalize({ x: point.x - candidate.point.x, y: point.y - candidate.point.y });
+    }
+  }
+  if (nearestDist > 8 || (normal.x === 0 && normal.y === 0)) return velocity;
+  const inward = velocity.x * normal.x + velocity.y * normal.y;
+  if (inward >= 0) return velocity;
+  return {
+    x: velocity.x - inward * normal.x,
+    y: velocity.y - inward * normal.y,
+  };
+}
+
 function sampleField(flow: FlowField2DResponse, obstacles: FlowObstacle[], point: Vec2): Vec2 {
+  if (obstacleContaining(point, obstacles)) {
+    return { x: 0, y: 0 };
+  }
+
   const resolved = sampleResolvedGrid(flow, point);
   if (resolved) {
-    return resolved;
+    return applyImpermeableSlip(resolved, point, obstacles);
   }
 
   const wind = { x: flow.inlet.ux, y: flow.inlet.uy };
@@ -311,13 +368,10 @@ function lerpColor(
 
 function speedToRgb(speed: number, maxSpeed: number): [number, number, number] {
   const t = clamp(speed / Math.max(0.1, maxSpeed), 0, 1);
-  if (t < 0.5) {
-    return lerpColor([10, 35, 52], [34, 184, 255], t / 0.5);
-  }
-  if (t < 0.82) {
-    return lerpColor([34, 184, 255], [255, 138, 42], (t - 0.5) / 0.32);
-  }
-  return lerpColor([255, 138, 42], [255, 246, 220], (t - 0.82) / 0.18);
+  if (t < 0.25) return lerpColor([22, 12, 56], [59, 82, 227], t / 0.25);
+  if (t < 0.5) return lerpColor([59, 82, 227], [33, 222, 183], (t - 0.25) / 0.25);
+  if (t < 0.75) return lerpColor([33, 222, 183], [250, 186, 57], (t - 0.5) / 0.25);
+  return lerpColor([250, 186, 57], [210, 49, 16], (t - 0.75) / 0.25);
 }
 
 function buildSpeedColormap(flow: FlowField2DResponse): HTMLCanvasElement | null {
@@ -454,20 +508,27 @@ function traceStreamline(
   for (let step = 0; step < maxSteps; step += 1) {
     const local = sampleField(flow, obstacles, current);
     const speed = length(local);
-    if (speed < 0.035) {
+    if (speed < 0.028) {
       break;
     }
 
     const dir = normalize(local);
+    const mid = {
+      x: current.x + dir.x * stepLength * direction * 0.5,
+      y: current.y + dir.y * stepLength * direction * 0.5,
+    };
+    const midWind = sampleField(flow, obstacles, mid);
+    const midSpeed = length(midWind);
+    const stepDir = midSpeed < 0.028 ? dir : normalize(midWind);
     const next = {
-      x: current.x + dir.x * stepLength * direction,
-      y: current.y + dir.y * stepLength * direction,
+      x: current.x + stepDir.x * stepLength * direction,
+      y: current.y + stepDir.y * stepLength * direction,
     };
 
     if (!isInsideBounds(next, bounds)) {
       break;
     }
-    if (obstacles.some((obstacle) => pointInPolygon(next, obstacle.footprint))) {
+    if (segmentHitsObstacle(current, next, obstacles)) {
       break;
     }
 
@@ -487,10 +548,10 @@ function buildStreamlines(
   const spanX = bounds.max_x - bounds.min_x;
   const spanY = bounds.max_y - bounds.min_y;
   const majorSpan = Math.max(spanX, spanY);
-  const columns = 10;
-  const rows = 13;
-  const stepLength = Math.max(3.5, majorSpan / 155);
-  const maxSteps = 92;
+  const columns = 16;
+  const rows = 20;
+  const stepLength = Math.max(2.8, majorSpan / 190);
+  const maxSteps = 140;
   const lines: Streamline[] = [];
 
   for (let ix = 0; ix < columns; ix += 1) {
@@ -554,7 +615,7 @@ function collisionRadiusForFlow(flow: FlowField2DResponse | null) {
 export default function TopDownGame({
   flow,
   showFlowAnimation,
-  flowVisualization = 'arrows',
+  flowVisualization = 'both',
   windScale = 1,
   showLidar = true,
   onTelemetry,
@@ -762,8 +823,8 @@ export default function TopDownGame({
       context.clearRect(0, 0, width, height);
 
       const gradient = context.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, '#1c2024');
-      gradient.addColorStop(1, '#0f1114');
+      gradient.addColorStop(0, '#1a1916');
+      gradient.addColorStop(1, '#100f0d');
       context.fillStyle = gradient;
       context.fillRect(0, 0, width, height);
 
@@ -853,14 +914,13 @@ export default function TopDownGame({
 
       if (showFlowAnimation && speedColormap && (flowVisualization === 'colormap' || flowVisualization === 'both')) {
         context.save();
-        context.globalAlpha = 0.86;
-        context.globalCompositeOperation = 'screen';
+        context.globalAlpha = flowVisualization === 'both' ? 0.78 : 0.9;
         context.imageSmoothingEnabled = true;
         context.drawImage(speedColormap, offsetX, offsetY, worldWidth * scale, worldHeight * scale);
         context.restore();
       }
 
-      if (showFlowAnimation && flowVisualization === 'arrows') {
+      if (showFlowAnimation && (flowVisualization === 'arrows' || flowVisualization === 'both')) {
         flowContext.save();
         flowContext.globalCompositeOperation = 'source-over';
         flowContext.fillStyle = 'rgba(15, 17, 20, 0.11)';
@@ -895,10 +955,12 @@ export default function TopDownGame({
             height,
             viewportBounds,
           );
-          const alpha = Math.min(0.35, 0.08 + mag / 18);
-          const hue = mag > 1.2 ? 200 : 28;
-          const light = Math.min(68, 44 + mag * 5);
-          flowContext.strokeStyle = `hsla(${hue}, 100%, ${light}%, ${Math.min(0.42, alpha + 0.08)})`;
+          const alpha = flowVisualization === 'both'
+            ? Math.min(0.22, 0.05 + mag / 28)
+            : Math.min(0.35, 0.08 + mag / 18);
+          const hue = mag > 1.2 ? 188 : 38;
+          const light = Math.min(70, 46 + mag * 5);
+          flowContext.strokeStyle = `hsla(${hue}, 100%, ${light}%, ${Math.min(flowVisualization === 'both' ? 0.28 : 0.42, alpha + 0.08)})`;
           flowContext.lineWidth = particle.width + Math.min(1.8, mag * 0.08);
           flowContext.beginPath();
           flowContext.moveTo(prev.x, prev.y);
@@ -958,10 +1020,10 @@ export default function TopDownGame({
 
         streamlines.forEach((line) => {
           const t = clamp(line.speed / maxSpeed, 0, 1);
-          const hue = 202 - t * 174;
-          const alpha = 0.28 + t * 0.34;
-          context.strokeStyle = `hsla(${hue}, 100%, ${58 + t * 12}%, ${alpha})`;
-          context.lineWidth = 0.9 + t * 2.3;
+          const hue = 230 - t * 210;
+          const alpha = 0.22 + t * 0.42;
+          context.strokeStyle = `hsla(${hue}, 95%, ${52 + t * 16}%, ${alpha})`;
+          context.lineWidth = 0.85 + t * 2.1;
           context.beginPath();
           line.points.forEach((point, index) => {
             const canvasPoint = worldToCanvas(point, width, height, viewportBounds);
@@ -1022,8 +1084,8 @@ export default function TopDownGame({
           else context.lineTo(point.x, point.y);
         });
         context.closePath();
-        context.fillStyle = '#e7e8e4';
-        context.strokeStyle = '#1f252a';
+        context.fillStyle = '#d8d0c3';
+        context.strokeStyle = '#2c2924';
         context.lineWidth = 1.2;
         context.fill();
         context.stroke();

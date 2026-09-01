@@ -35,7 +35,7 @@ export function useUrbanFlighterData() {
   const [location, setLocation] = useState<{ lat: number; lon: number }>({ lat: DEFAULT_LAT, lon: DEFAULT_LON });
   const [flow, setFlow] = useState<FlowField2DResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState('Loading default Inha/Incheon OSM buildings + current wind...');
+  const [status, setStatus] = useState('Loading default Midtown Manhattan OSM buildings + current wind...');
   const [backendState, setBackendState] = useState<BackendState>('checking');
   const [backendDetail, setBackendDetail] = useState(`Checking ${API_URL}/health`);
   const [showFlowAnimation, setShowFlowAnimation] = useState(true);

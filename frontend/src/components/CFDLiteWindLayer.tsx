@@ -3,7 +3,7 @@ import { Line } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { FlowField2DResponse } from '../api';
-import { flowSpeedAtIndex, hasResolvedFlowGrid, sampleFlowField2D } from '../utils/flowFieldSampling';
+import { flowSpeedAtIndex, hasResolvedFlowGrid, maskBlocksSegment, sampleFlowField2D } from '../utils/flowFieldSampling';
 
 interface CFDLiteWindLayerProps {
   flow: FlowField2DResponse | null;
@@ -23,7 +23,11 @@ interface StreamlinePath {
 
 function makeColor(speed: number, maxSpeed: number) {
   const t = THREE.MathUtils.clamp(speed / Math.max(maxSpeed, 1), 0, 1);
-  return new THREE.Color().setHSL(0.58 - t * 0.50, 0.95, 0.52);
+  const color = new THREE.Color();
+  if (t < 0.25) return color.lerpColors(new THREE.Color('#160c38'), new THREE.Color('#3b52e3'), t / 0.25);
+  if (t < 0.5) return color.lerpColors(new THREE.Color('#3b52e3'), new THREE.Color('#21deb7'), (t - 0.25) / 0.25);
+  if (t < 0.75) return color.lerpColors(new THREE.Color('#21deb7'), new THREE.Color('#faba39'), (t - 0.5) / 0.25);
+  return color.lerpColors(new THREE.Color('#faba39'), new THREE.Color('#d23110'), (t - 0.75) / 0.25);
 }
 
 function fieldYToSceneZ(fieldY: number) {
@@ -133,12 +137,15 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
       }
     }
 
-    for (let ix = 0; ix < field.nx - 1; ix += 1) {
+        for (let ix = 0; ix < field.nx - 1; ix += 1) {
       for (let iy = 0; iy < field.ny - 1; iy += 1) {
         const a = ix * field.ny + iy;
         const b = (ix + 1) * field.ny + iy;
         const c = (ix + 1) * field.ny + iy + 1;
         const d = ix * field.ny + iy + 1;
+        if ((field.mask[a] ?? 0) > 0 || (field.mask[b] ?? 0) > 0 || (field.mask[c] ?? 0) > 0 || (field.mask[d] ?? 0) > 0) {
+          continue;
+        }
         indices.push(a, b, d, b, c, d);
       }
     }
@@ -180,37 +187,46 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
     if (!hasResolvedFlowGrid(flow)) return [];
     const { field } = flow;
     const lines: StreamlinePath[] = [];
-    const seedsPerLayer = 22;
+    const seedsPerLayer = 36;
     const direction = new THREE.Vector2(flow.inlet.ux, flow.inlet.uy).normalize();
     const useXEdge = Math.abs(direction.x) >= Math.abs(direction.y);
-    const step = Math.max(field.cell_size_m * 1.15, 3.0);
+    const step = Math.max(field.cell_size_m * 0.95, 2.4);
 
     levels.forEach((layerHeight, layerIndex) => {
       for (let s = 0; s < seedsPerLayer; s += 1) {
+        const interior = s % 3 === 2;
         let x = useXEdge
-          ? (direction.x >= 0 ? field.bounds.min_x + field.cell_size_m : field.bounds.max_x - field.cell_size_m)
+          ? (interior
+            ? field.bounds.min_x + ((s + 0.35) / seedsPerLayer) * (field.bounds.max_x - field.bounds.min_x)
+            : (direction.x >= 0 ? field.bounds.min_x + field.cell_size_m : field.bounds.max_x - field.cell_size_m))
           : field.bounds.min_x + ((s + 0.5) / seedsPerLayer) * (field.bounds.max_x - field.bounds.min_x);
         let fieldY = useXEdge
           ? field.bounds.min_y + ((s + 0.5) / seedsPerLayer) * (field.bounds.max_y - field.bounds.min_y)
-          : (direction.y >= 0 ? field.bounds.min_y + field.cell_size_m : field.bounds.max_y - field.cell_size_m);
+          : (interior
+            ? field.bounds.min_y + ((s + 0.35) / seedsPerLayer) * (field.bounds.max_y - field.bounds.min_y)
+            : (direction.y >= 0 ? field.bounds.min_y + field.cell_size_m : field.bounds.max_y - field.cell_size_m));
         const pts: THREE.Vector3[] = [];
         let meanSpeed = 0;
 
-        for (let i = 0; i < 280; i += 1) {
+        for (let i = 0; i < 340; i += 1) {
           if (x < field.bounds.min_x || x > field.bounds.max_x || fieldY < field.bounds.min_y || fieldY > field.bounds.max_y) break;
           const z = fieldYToSceneZ(fieldY);
           const vec = sampleFlowField2D(flow, x, z);
           const speed = vec?.length() ?? 0;
-          if (!vec || speed < 0.12) break;
+          if (!vec || speed < 0.08) break;
           const ix = Math.max(0, Math.min(field.nx - 1, Math.round(((x - field.bounds.min_x) / Math.max(1e-6, field.bounds.max_x - field.bounds.min_x)) * (field.nx - 1))));
           const iy = Math.max(0, Math.min(field.ny - 1, Math.round(((fieldY - field.bounds.min_y) / Math.max(1e-6, field.bounds.max_y - field.bounds.min_y)) * (field.ny - 1))));
           if ((field.mask[ix * field.ny + iy] ?? 0) > 0) break;
-          const wave = Math.sin((i * 0.23) + layerIndex * 0.8) * 1.8;
-          pts.push(new THREE.Vector3(x, layerHeight + wave, z));
+          pts.push(new THREE.Vector3(x, layerHeight, z));
           meanSpeed += speed;
           const dir = vec.clone().normalize();
-          x += dir.x * step;
-          fieldY = sceneZToFieldY(z + dir.z * step);
+          const mid = sampleFlowField2D(flow, x + dir.x * step * 0.5, fieldYToSceneZ(fieldY) + dir.z * step * 0.5);
+          const stepDir = mid && mid.length() >= 0.08 ? mid.normalize() : dir;
+          const nextX = x + stepDir.x * step;
+          const nextFieldY = sceneZToFieldY(z + stepDir.z * step);
+          if (maskBlocksSegment(flow, x, fieldY, nextX, nextFieldY)) break;
+          x = nextX;
+          fieldY = nextFieldY;
         }
 
         if (pts.length > 8) {
@@ -228,7 +244,7 @@ const CFDLiteWindLayer: React.FC<CFDLiteWindLayerProps> = ({
     <group name="CFD-lite B wind streamlines">
       {showContour && contourGeometry && (
         <mesh geometry={contourGeometry}>
-          <meshBasicMaterial vertexColors transparent opacity={0.42} side={THREE.DoubleSide} depthWrite={false} />
+          <meshBasicMaterial vertexColors transparent opacity={0.34} side={THREE.DoubleSide} depthWrite={false} />
         </mesh>
       )}
       {showArrows && arrows.map((arrow, idx) => (

@@ -75,6 +75,27 @@ export function sampleMaskedBilinear(
   return value / weight;
 }
 
+export function fieldCellIndex(flow: FlowField2DResponse, x: number, fieldY: number): number | null {
+  const { field } = flow;
+  const { bounds } = field;
+  if (x < bounds.min_x || x > bounds.max_x || fieldY < bounds.min_y || fieldY > bounds.max_y) return null;
+  const ix = clamp(Math.round(((x - bounds.min_x) / Math.max(1e-6, bounds.max_x - bounds.min_x)) * (field.nx - 1)), 0, field.nx - 1);
+  const iy = clamp(Math.round(((fieldY - bounds.min_y) / Math.max(1e-6, bounds.max_y - bounds.min_y)) * (field.ny - 1)), 0, field.ny - 1);
+  return ix * field.ny + iy;
+}
+
+export function maskBlocksSegment(flow: FlowField2DResponse, x0: number, fieldY0: number, x1: number, fieldY1: number): boolean {
+  const span = Math.hypot(x1 - x0, fieldY1 - fieldY0);
+  const steps = Math.max(2, Math.ceil(span / Math.max(flow.field.cell_size_m * 0.45, 0.8)));
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const index = fieldCellIndex(flow, x0 + (x1 - x0) * t, fieldY0 + (fieldY1 - fieldY0) * t);
+    if (index === null) continue;
+    if (isSolidMaskCell(flow.field.mask, index)) return true;
+  }
+  return false;
+}
+
 export function flowSpeedAtIndex(flow: FlowField2DResponse, ix: number, iy: number) {
   const idx = ix * flow.field.ny + iy;
   return Math.hypot(flow.field.ux[idx] ?? 0, flow.field.uy[idx] ?? 0);

@@ -61,8 +61,8 @@ class SimulationManager:
             req = rec.request or {}
 
         try:
-            lat = float(req.get("lat", 37.451448))
-            lon = float(req.get("lon", 126.6515423))
+            lat = float(req.get("lat", 40.7580))
+            lon = float(req.get("lon", -73.9855))
             radius_m = float(req.get("radius_m", 800.0))
             nx = int(req.get("nx", 64))
             ny = int(req.get("ny", 64))

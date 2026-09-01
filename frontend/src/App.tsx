@@ -442,7 +442,7 @@ function App() {
         <TopDownGame
           flow={flow}
           showFlowAnimation={showFlowAnimation}
-          flowVisualization={shot === '2d' ? 'both' : 'arrows'}
+          flowVisualization="both"
           showLidar={showLidar}
           onTelemetry={setTelemetry}
         />

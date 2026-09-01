@@ -256,6 +256,48 @@ def test_configured_wind_is_not_mislabelled_as_live_or_fallback() -> None:
     assert response["weather"]["description"] == "Configured deterministic baseline wind"
 
 
+def test_urban_look_adds_a_reverse_wake_behind_a_slab() -> None:
+    from services.flow_2d import compute_cfd_lite_b_flow_2d
+
+    buildings = [{
+        "height": 40.0,
+        "footprint": [[-20.0, -12.0], [20.0, -12.0], [20.0, 12.0], [-20.0, 12.0], [-20.0, -12.0]],
+    }]
+    field = compute_cfd_lite_b_flow_2d(buildings, np.array([5.0, 0.0], dtype=np.float32), 80.0, 4.0)
+    ux = np.asarray(field["ux"], dtype=np.float32).reshape(field["nx"], field["ny"])
+    uy = np.asarray(field["uy"], dtype=np.float32).reshape(field["nx"], field["ny"])
+    mask = np.asarray(field["mask"], dtype=np.uint8).reshape(field["nx"], field["ny"])
+    x = np.linspace(field["bounds"]["min_x"], field["bounds"]["max_x"], field["nx"])
+    y = np.linspace(field["bounds"]["min_y"], field["bounds"]["max_y"], field["ny"])
+    ix = int(np.argmin(np.abs(x - 36.0)))
+    iy = int(np.argmin(np.abs(y - 0.0)))
+    assert mask[ix, iy] == 0
+    assert field["stats"]["urban_look"] == "wake_recirc_canyon_corner"
+    assert field["stats"]["wall_condition"] == "impermeable_slip"
+    assert float(ux[ix, iy]) < 1.5
+    inside_x = int(np.argmin(np.abs(x - 0.0)))
+    inside_y = int(np.argmin(np.abs(y - 0.0)))
+    assert mask[inside_x, inside_y] == 1
+    assert float(ux[inside_x, inside_y]) == 0.0
+
+    px, py = -56.0, 0.0
+    for _ in range(240):
+        assert not (-20.0 <= px <= 20.0 and -12.0 <= py <= 12.0)
+        gx = (px - field["bounds"]["min_x"]) / 4.0
+        gy = (py - field["bounds"]["min_y"]) / 4.0
+        ix0 = int(np.clip(np.floor(gx), 0, field["nx"] - 1))
+        iy0 = int(np.clip(np.floor(gy), 0, field["ny"] - 1))
+        if mask[ix0, iy0]:
+            break
+        vx = float(ux[ix0, iy0])
+        vy = float(uy[ix0, iy0])
+        speed = float(np.hypot(vx, vy))
+        if speed < 0.05:
+            break
+        px += (vx / speed) * 2.0
+        py += (vy / speed) * 2.0
+
+
 def test_osm_height_sources_are_preserved_or_deterministically_labelled() -> None:
     assert _building_height({"height": "42.5 m"}) == (42.5, "osm:height")
     assert _building_height({"building:levels": "5"}) == (
@@ -276,6 +318,7 @@ if __name__ == "__main__":
         test_http_validation_rejects_oversized_grid_before_external_work,
         test_flow_endpoint_preserves_weather_provenance_without_allocating,
         test_configured_wind_is_not_mislabelled_as_live_or_fallback,
+        test_urban_look_adds_a_reverse_wake_behind_a_slab,
         test_osm_height_sources_are_preserved_or_deterministically_labelled,
     )
     for test in tests:

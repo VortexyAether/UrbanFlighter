@@ -103,7 +103,7 @@ export default function ThreeCanvas({
     orbitTarget,
     presentationMode,
 }: ThreeCanvasProps) {
-    const skyColor = presentationMode ? '#b8cfdb' : '#151b1e';
+    const skyColor = presentationMode ? '#c9c6bf' : '#121110';
     return (
         <Canvas
             shadows
@@ -111,7 +111,7 @@ export default function ThreeCanvas({
             gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
             onCreated={({ gl }) => {
                 gl.toneMapping = THREE.ACESFilmicToneMapping;
-                gl.toneMappingExposure = presentationMode ? 1.08 : 0.9;
+                gl.toneMappingExposure = presentationMode ? 0.92 : 0.82;
                 gl.shadowMap.type = THREE.PCFSoftShadowMap;
                 gl.domElement.style.touchAction = 'none';
             }}
@@ -135,29 +135,29 @@ export default function ThreeCanvas({
             {presentationMode ? (
                 <Sky
                     distance={4_500}
-                    sunPosition={[-160, 260, 110]}
-                    inclination={0.53}
-                    azimuth={0.19}
-                    turbidity={5.4}
-                    rayleigh={1.35}
-                    mieCoefficient={0.006}
-                    mieDirectionalG={0.82}
+                    sunPosition={[-120, 220, 80]}
+                    inclination={0.48}
+                    azimuth={0.22}
+                    turbidity={2.8}
+                    rayleigh={0.85}
+                    mieCoefficient={0.003}
+                    mieDirectionalG={0.9}
                 />
             ) : (
                 <color attach="background" args={[skyColor]} />
             )}
-            <fog attach="fog" args={[presentationMode ? '#b8c8cd' : '#151b1e', 170, 1_180]} />
+            <fog attach="fog" args={[presentationMode ? '#b7b4ad' : '#121110', 220, 1_350]} />
 
-            <ambientLight intensity={presentationMode ? 0.34 : 0.38} />
+            <ambientLight intensity={presentationMode ? 0.28 : 0.32} />
             <hemisphereLight
-                intensity={presentationMode ? 0.92 : 0.48}
-                color={presentationMode ? '#eaf4ff' : '#dce9ed'}
-                groundColor={presentationMode ? '#596159' : '#111719'}
+                intensity={presentationMode ? 0.62 : 0.4}
+                color={presentationMode ? '#efe8dc' : '#d8d4cc'}
+                groundColor={presentationMode ? '#3a3936' : '#141312'}
             />
             <directionalLight
-                position={[-160, 260, 110]}
-                intensity={presentationMode ? 3.15 : 1.35}
-                color={presentationMode ? '#fff3d6' : '#e7f5f8'}
+                position={[-120, 220, 80]}
+                intensity={presentationMode ? 1.85 : 1.15}
+                color={presentationMode ? '#f3efe6' : '#ece8e0'}
                 castShadow
                 shadow-mapSize={[2_048, 2_048]}
                 shadow-camera-left={-460}

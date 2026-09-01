@@ -12,6 +12,11 @@ from urban_flighter_rl.potential_flow import solve_potential_flow_slice
 from urban_flighter_rl.wind_corrections import apply_wall_damping_and_wake
 from urban_flighter_rl.world import Building, UrbanWorld
 
+try:
+    from matplotlib.path import Path as MplPath
+except Exception:  # pragma: no cover - optional fast rasterizer
+    MplPath = None
+
 
 def wind_dir_to_inlet_vector(speed_mps: float, deg_from_north: float) -> np.ndarray:
     """
@@ -83,11 +88,35 @@ def rasterize_building_mask_on_grid(
         ix1 = min(len(x) - 1, int(np.searchsorted(x, max_x, side="right")) + 1)
         iy0 = max(0, int(np.searchsorted(y, min_y, side="left")) - 1)
         iy1 = min(len(y) - 1, int(np.searchsorted(y, max_y, side="right")) + 1)
-        for ix in range(ix0, ix1 + 1):
-            for iy in range(iy0, iy1 + 1):
-                if point_in_polygon(float(x[ix]), float(y[iy]), footprint):
-                    mask[ix, iy] = True
+        _fill_polygon_mask(mask, x, y, ix0, ix1, iy0, iy1, footprint)
     return mask
+
+
+def _fill_polygon_mask(
+    mask: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    ix0: int,
+    ix1: int,
+    iy0: int,
+    iy1: int,
+    footprint: np.ndarray,
+) -> None:
+    xs = x[ix0:ix1 + 1]
+    ys = y[iy0:iy1 + 1]
+    if xs.size == 0 or ys.size == 0:
+        return
+    xx, yy = np.meshgrid(xs, ys, indexing="ij")
+    if MplPath is not None:
+        inside = MplPath(np.asarray(footprint, dtype=np.float64), closed=True).contains_points(
+            np.column_stack([xx.ravel(), yy.ravel()])
+        ).reshape(xx.shape)
+        mask[ix0:ix1 + 1, iy0:iy1 + 1] |= inside
+        return
+    for i, wx in enumerate(xs):
+        for j, wy in enumerate(ys):
+            if point_in_polygon(float(wx), float(wy), footprint):
+                mask[ix0 + i, iy0 + j] = True
 
 
 def build_wake_and_deflection_sources(
@@ -264,6 +293,131 @@ def _streamfunction_freestream(xx: np.ndarray, yy: np.ndarray, inlet_velocity: n
     return u * yy - v * xx
 
 
+def _apply_urban_look_corrections(
+    ux: np.ndarray,
+    uy: np.ndarray,
+    mask: np.ndarray,
+    xx: np.ndarray,
+    yy: np.ndarray,
+    inlet_velocity: np.ndarray,
+    cell_size_m: float,
+    buildings: list[dict[str, Any]],
+    altitude_m: float,
+    dist_m: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, dict[str, float]]:
+    """Cheap urban-looking corrections on top of potential flow.
+
+    Not Navier-Stokes. Adds street-canyon speed-up, a longer wake deficit,
+    a near-wake reverse bubble, and a weak pair of trailing swirls so the
+    field reads like an urban CFD plot instead of a smooth irrotational wrap.
+    """
+    speed0 = max(float(np.linalg.norm(inlet_velocity)), 1e-6)
+    wind_hat = inlet_velocity / speed0
+    cross_hat = np.array([-float(wind_hat[1]), float(wind_hat[0])], dtype=np.float32)
+    cell = max(float(cell_size_m), 1e-3)
+
+    canyon = np.exp(-np.clip(dist_m - cell, 0.0, None) / 14.0)
+    canyon *= (dist_m > cell * 0.55).astype(np.float32)
+    boost = 1.0 + 0.34 * canyon
+    ux = ux * boost
+    uy = uy * boost
+
+    deficit = np.zeros_like(ux, dtype=np.float32)
+    recirc = np.zeros_like(ux, dtype=np.float32)
+    swirl = np.zeros_like(ux, dtype=np.float32)
+    for building in buildings:
+        if float(building.get("height", 0.0) or 0.0) < altitude_m:
+            continue
+        center, span = _building_center_and_span(building, cell)
+        rel_x = xx - float(center[0])
+        rel_y = yy - float(center[1])
+        along = rel_x * wind_hat[0] + rel_y * wind_hat[1]
+        cross = rel_x * cross_hat[0] + rel_y * cross_hat[1]
+        wake_len = max(span * 4.4, cell * 8.0)
+        wake_width = span * 0.62 + np.maximum(along, 0.0) * 0.16 + cell
+        envelope = (
+            (along > 0.0).astype(np.float32)
+            * np.exp(-np.maximum(along, 0.0) / wake_len)
+            * np.exp(-np.square(cross / np.maximum(wake_width, cell)))
+        )
+        deficit = np.maximum(deficit, envelope)
+        bubble = (
+            ((along > 0.12 * span) & (along < 1.45 * span)).astype(np.float32)
+            * np.exp(-np.square((along - 0.55 * span) / max(0.48 * span, cell)))
+            * np.exp(-np.square(cross / max(0.42 * span, cell)))
+        )
+        recirc = np.maximum(recirc, bubble)
+        swirl += bubble * np.sign(cross + 1e-6) * 0.20 * speed0
+
+    ux *= 1.0 - 0.70 * np.clip(deficit, 0.0, 1.0)
+    uy *= 1.0 - 0.70 * np.clip(deficit, 0.0, 1.0)
+
+    streamwise = ux * wind_hat[0] + uy * wind_hat[1]
+    lateral = ux * cross_hat[0] + uy * cross_hat[1]
+    streamwise = streamwise * (1.0 - 1.05 * recirc) - 0.30 * recirc * speed0
+    lateral = lateral + swirl
+    ux = streamwise * wind_hat[0] + lateral * cross_hat[0]
+    uy = streamwise * wind_hat[1] + lateral * cross_hat[1]
+
+    ux_s = gaussian_filter(ux, sigma=0.70, mode="nearest")
+    uy_s = gaussian_filter(uy, sigma=0.70, mode="nearest")
+    fluid = ~mask
+    ux = np.where(fluid, ux_s, 0.0).astype(np.float32)
+    uy = np.where(fluid, uy_s, 0.0).astype(np.float32)
+    speed = np.sqrt(ux * ux + uy * uy)
+    cap = speed0 * 3.4
+    scale = np.minimum(1.0, cap / np.maximum(speed, 1e-6))
+    ux *= scale
+    uy *= scale
+    ux, uy = _enforce_impermeable_slip(ux, uy, mask, dist_m, cell)
+    return ux, uy, {
+        "wake_strength": 0.70,
+        "recirculation_strength": 0.30,
+        "canyon_boost": 0.34,
+        "wall_condition": "impermeable_slip",
+    }
+
+
+def _enforce_impermeable_slip(
+    ux: np.ndarray,
+    uy: np.ndarray,
+    mask: np.ndarray,
+    dist_m: np.ndarray,
+    cell_size_m: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Slip wall: remove the wall-normal flux so air cannot cross a facade.
+
+    ``dist_m`` is distance to the nearest solid, so its gradient points from the
+    building into the fluid. Any velocity component toward the wall is deleted:
+    ``u <- u - n min(u·n, 0)``. Inside solids, ``u = 0``.
+    This is not no-slip Navier--Stokes; it is an impermeable boundary on the
+    existing CFD-lite field.
+    """
+    cell = max(float(cell_size_m), 1e-3)
+    nx = np.gradient(dist_m, cell, axis=0)
+    ny = np.gradient(dist_m, cell, axis=1)
+    nlen = np.sqrt(nx * nx + ny * ny)
+    valid = (nlen > 1e-6) & (~mask)
+    nx_hat = np.zeros_like(ux)
+    ny_hat = np.zeros_like(uy)
+    nx_hat[valid] = nx[valid] / nlen[valid]
+    ny_hat[valid] = ny[valid] / nlen[valid]
+
+    normal = ux * nx_hat + uy * ny_hat
+    into_wall = np.minimum(normal, 0.0)
+    ux = ux - into_wall * nx_hat
+    uy = uy - into_wall * ny_hat
+
+    near = valid & (dist_m < cell * 1.15)
+    normal_near = ux * nx_hat + uy * ny_hat
+    ux = np.where(near, ux - normal_near * nx_hat, ux)
+    uy = np.where(near, uy - normal_near * ny_hat, uy)
+
+    ux = np.where(mask, 0.0, ux).astype(np.float32)
+    uy = np.where(mask, 0.0, uy).astype(np.float32)
+    return ux, uy
+
+
 def _building_center_and_span(building: dict[str, Any], cell_size_m: float) -> tuple[np.ndarray, float]:
     footprint = np.asarray(building.get("footprint", []), dtype=np.float32)
     if footprint.ndim != 2 or footprint.shape[0] < 3:
@@ -348,40 +502,31 @@ def solve_polygon_potential_flow_b(
 
     speed0 = max(float(np.linalg.norm(inlet_velocity)), 1e-6)
     speed = np.sqrt(ux * ux + uy * uy)
-    cap = speed0 * 2.8
+    cap = speed0 * 3.2
     scale = np.minimum(1.0, cap / np.maximum(speed, 1e-6))
     ux *= scale
     uy *= scale
 
     dist_m = distance_transform_edt(~mask).astype(np.float32) * float(cell_size_m)
     # Near-wall-only damping: far-field stays potential-flow, walls still slow.
-    # Same O(grid) cost as the previous global exponential; no extra Jacobi work.
     wall_length_m = max(6.0, float(cell_size_m))
     near_wall = np.exp(-dist_m / wall_length_m)
     damping = 1.0 - 0.45 * near_wall
     ux *= damping
     uy *= damping
 
-    wind_hat = inlet_velocity / speed0
-    cross_hat = np.array([-wind_hat[1], wind_hat[0]], dtype=np.float32)
-    deficit = np.zeros_like(ux, dtype=np.float32)
-    for building in buildings:
-        if float(building.get("height", 0.0) or 0.0) < altitude_m:
-            continue
-        center, span = _building_center_and_span(building, cell_size_m)
-        rel_x = xx - float(center[0])
-        rel_y = yy - float(center[1])
-        along = rel_x * wind_hat[0] + rel_y * wind_hat[1]
-        cross = rel_x * cross_hat[0] + rel_y * cross_hat[1]
-        wake_len = max(span * 5.5, cell_size_m * 8.0)
-        wake_width = span * 0.7 + np.maximum(along, 0.0) * 0.22 + cell_size_m
-        local = (along > 0.0).astype(np.float32) * np.exp(-np.maximum(along, 0.0) / wake_len) * np.exp(-np.square(cross / np.maximum(wake_width, cell_size_m)))
-        deficit = np.maximum(deficit, local.astype(np.float32))
-    wake_factor = 1.0 - 0.55 * np.clip(deficit, 0.0, 1.0)
-    ux *= wake_factor
-    uy *= wake_factor
-    ux[mask] = 0.0
-    uy[mask] = 0.0
+    ux, uy, urban_meta = _apply_urban_look_corrections(
+        ux=ux,
+        uy=uy,
+        mask=mask,
+        xx=xx,
+        yy=yy,
+        inlet_velocity=inlet_velocity,
+        cell_size_m=float(cell_size_m),
+        buildings=buildings,
+        altitude_m=float(altitude_m),
+        dist_m=dist_m,
+    )
 
     speed_grid = np.sqrt(ux * ux + uy * uy)
     return {
@@ -402,8 +547,12 @@ def solve_polygon_potential_flow_b(
             "altitude_m": float(altitude_m),
             "wall_damping_length_m": 6.0,
             "wall_damping_scope": "near_wall_only",
-            "wake_strength": 0.55,
+            "wake_strength": urban_meta["wake_strength"],
+            "recirculation_strength": urban_meta["recirculation_strength"],
+            "canyon_boost": urban_meta["canyon_boost"],
+            "wall_condition": urban_meta.get("wall_condition", "impermeable_slip"),
             "internal_obstacle_geometry": "actual_osm_polygon_mask",
+            "urban_look": "wake_recirc_canyon_corner",
         },
     }
 

@@ -41,20 +41,20 @@ const CityModel: React.FC<CityModelProps> = ({
         <group key={building.identity || `${index}-${building.height.toFixed(1)}`}>
           <mesh geometry={building.geometry} receiveShadow castShadow>
             <meshStandardMaterial
-              color={presentationMode ? building.facadeColor : '#a3aaab'}
-              metalness={presentationMode ? 0.12 : 0.05}
-              roughness={presentationMode ? building.facadeRoughness : 0.82}
+              color={presentationMode ? building.facadeColor : '#8b8680'}
+              metalness={presentationMode ? building.facadeMetalness : 0.06}
+              roughness={presentationMode ? building.facadeRoughness : 0.84}
             />
           </mesh>
           <mesh geometry={building.roofGeometry} receiveShadow castShadow>
             <meshStandardMaterial
-              color={presentationMode ? building.roofColor : '#81898a'}
-              metalness={presentationMode ? 0.18 : 0.04}
-              roughness={presentationMode ? building.roofRoughness : 0.88}
+              color={presentationMode ? building.roofColor : '#3d4143'}
+              metalness={presentationMode ? 0.22 : 0.05}
+              roughness={presentationMode ? building.roofRoughness : 0.9}
             />
           </mesh>
           <lineSegments geometry={building.edgeGeometry}>
-            <lineBasicMaterial color="#263033" transparent opacity={presentationMode ? 0.18 : 0.28} />
+            <lineBasicMaterial color="#1b1916" transparent opacity={presentationMode ? 0.12 : 0.22} />
           </lineSegments>
           {showClearanceHalo && (
             <mesh position={[building.center.x, building.height / 2, building.center.y]} renderOrder={1}>
@@ -67,7 +67,7 @@ const CityModel: React.FC<CityModelProps> = ({
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.16, 0]} receiveShadow>
         <planeGeometry args={[5200, 5200]} />
-        <meshStandardMaterial color={presentationMode ? '#536057' : '#242b2e'} roughness={1} metalness={0} />
+        <meshStandardMaterial color={presentationMode ? '#2a2b2a' : '#1a1c1d'} roughness={1} metalness={0} />
       </mesh>
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
@@ -76,9 +76,9 @@ const CityModel: React.FC<CityModelProps> = ({
       >
         <planeGeometry args={[groundWidth + 40, groundDepth + 40]} />
         <meshStandardMaterial
-          color={presentationMode ? '#68716b' : '#252d30'}
-          roughness={0.99}
-          metalness={0.01}
+          color={presentationMode ? '#353634' : '#202325'}
+          roughness={0.96}
+          metalness={0.04}
         />
       </mesh>
       {!presentationMode && (

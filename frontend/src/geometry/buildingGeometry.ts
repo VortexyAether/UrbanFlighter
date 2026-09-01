@@ -6,6 +6,7 @@ export interface BuildingMeshData {
   center: THREE.Vector2;
   edgeGeometry: THREE.EdgesGeometry;
   facadeColor: string;
+  facadeMetalness: number;
   facadeRoughness: number;
   geometry: THREE.ExtrudeGeometry;
   height: number;
@@ -16,8 +17,15 @@ export interface BuildingMeshData {
   roofRoughness: number;
 }
 
-const FACADE_PALETTE = ['#a9afb0', '#b8b5aa', '#9fa9ac', '#b0a49a', '#8f9ca0', '#b8bab4'];
-const ROOF_PALETTE = ['#737d7f', '#85877f', '#687477', '#7d736b', '#8b8f8a'];
+const FACADE_PALETTE = [
+  { color: '#8d8476', metalness: 0.08, roughness: 0.78 },
+  { color: '#6f767c', metalness: 0.42, roughness: 0.28 },
+  { color: '#c2b6a4', metalness: 0.06, roughness: 0.72 },
+  { color: '#5a5048', metalness: 0.1, roughness: 0.86 },
+  { color: '#7b8389', metalness: 0.38, roughness: 0.32 },
+  { color: '#9a8b78', metalness: 0.07, roughness: 0.8 },
+];
+const ROOF_PALETTE = ['#3c3f41', '#45423d', '#2f3335', '#3a3632', '#41464a'];
 
 export function createBuildingGeometry(building: BuildingData) {
   const shape = new THREE.Shape();
@@ -87,19 +95,21 @@ export function buildBuildingMeshData(buildings: BuildingData[]): BuildingMeshDa
     const seed = deterministicStringSeed(identity);
     const facadeIndex = Math.floor(deterministicUnit(seed, index, 0) * FACADE_PALETTE.length);
     const roofIndex = Math.floor(deterministicUnit(seed, index, 1) * ROOF_PALETTE.length);
+    const facade = FACADE_PALETTE[facadeIndex];
 
     return [{
       center,
-      edgeGeometry: new THREE.EdgesGeometry(geometry, 28),
-      facadeColor: FACADE_PALETTE[facadeIndex],
-      facadeRoughness: 0.68 + deterministicUnit(seed, index, 2) * 0.2,
+      edgeGeometry: new THREE.EdgesGeometry(geometry, 22),
+      facadeColor: facade.color,
+      facadeMetalness: facade.metalness,
+      facadeRoughness: facade.roughness + deterministicUnit(seed, index, 2) * 0.08,
       geometry,
       height: building.height,
       haloRadius,
       identity,
       roofColor: ROOF_PALETTE[roofIndex],
       roofGeometry: createBuildingRoofGeometry(building),
-      roofRoughness: 0.74 + deterministicUnit(seed, index, 3) * 0.18,
+      roofRoughness: 0.86 + deterministicUnit(seed, index, 3) * 0.1,
     }];
   });
 }

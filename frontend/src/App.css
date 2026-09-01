@@ -1,18 +1,18 @@
 :root {
-  --bg: #111316;
-  --tile: rgba(255, 255, 255, 0.055);
-  --panel: rgba(244, 246, 242, 0.93);
-  --panel-strong: rgba(255, 255, 255, 0.97);
-  --ink: #111417;
-  --muted: #5d656c;
-  --line: rgba(17, 20, 23, 0.16);
-  --line-strong: rgba(17, 20, 23, 0.34);
-  --blue: #22b8ff;
-  --blue-soft: rgba(34, 184, 255, 0.16);
-  --orange: #ff8a2a;
-  --orange-soft: rgba(255, 138, 42, 0.18);
-  --dark-panel: rgba(20, 22, 24, 0.82);
-  --dark-line: rgba(255, 255, 255, 0.16);
+  --bg: #121110;
+  --tile: rgba(255, 248, 236, 0.028);
+  --panel: rgba(246, 243, 236, 0.94);
+  --panel-strong: rgba(250, 248, 243, 0.98);
+  --ink: #1c1a17;
+  --muted: #6d675f;
+  --line: rgba(28, 26, 23, 0.12);
+  --line-strong: rgba(28, 26, 23, 0.28);
+  --blue: #8b7355;
+  --blue-soft: rgba(139, 115, 85, 0.14);
+  --orange: #9a7b4f;
+  --orange-soft: rgba(154, 123, 79, 0.16);
+  --dark-panel: rgba(22, 21, 19, 0.86);
+  --dark-line: rgba(236, 230, 218, 0.12);
 }
 
 .app-shell--shot .window-dock {
@@ -73,10 +73,9 @@
   background:
     linear-gradient(var(--tile) 1px, transparent 1px),
     linear-gradient(90deg, var(--tile) 1px, transparent 1px),
-    radial-gradient(circle at 18% 12%, rgba(34, 184, 255, 0.11), transparent 28%),
-    radial-gradient(circle at 88% 78%, rgba(255, 138, 42, 0.11), transparent 30%),
+    radial-gradient(circle at 18% 8%, rgba(236, 226, 208, 0.05), transparent 32%),
     var(--bg);
-  background-size: 56px 56px, 56px 56px, 100% 100%, 100% 100%, 100% 100%;
+  background-size: 72px 72px, 72px 72px, 100% 100%, 100% 100%;
 }
 
 .game-canvas,
@@ -110,11 +109,10 @@
   min-width: 440px;
   padding: 8px 10px;
   color: #eafaff;
-  border: 1px solid rgba(170, 237, 247, 0.3);
-  border-radius: 10px;
+  border: 1px solid rgba(232, 224, 210, 0.16);
+  border-radius: 6px;
   background:
-    linear-gradient(135deg, rgba(23, 44, 51, 0.88), rgba(8, 17, 21, 0.9)),
-    rgba(8, 16, 20, 0.88);
+    linear-gradient(180deg, rgba(28, 26, 23, 0.78), rgba(16, 15, 13, 0.86));
   box-shadow: 0 18px 54px rgba(0, 0, 0, 0.38);
   transform: translateX(-50%);
   backdrop-filter: blur(14px);
@@ -269,10 +267,10 @@
   align-items: center;
   gap: 5px;
   padding: 5px;
-  border: 1px solid rgba(174, 238, 250, 0.24);
-  border-radius: 8px;
-  color: #dff7fc;
-  background: rgba(9, 16, 20, 0.9);
+  border: 1px solid rgba(232, 224, 210, 0.14);
+  border-radius: 6px;
+  color: #ece6da;
+  background: rgba(18, 17, 15, 0.9);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.42);
   transform: translateX(-50%);
   backdrop-filter: blur(12px);
@@ -284,11 +282,11 @@
   gap: 6px;
   min-height: 30px;
   padding: 6px 8px;
-  color: rgba(223, 247, 252, 0.7);
-  border-color: rgba(174, 238, 250, 0.16);
-  background: rgba(255, 255, 255, 0.04);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: rgba(236, 230, 218, 0.72);
+  border-color: rgba(232, 224, 210, 0.1);
+  background: rgba(255, 248, 236, 0.03);
+  text-transform: none;
+  letter-spacing: 0.02em;
   font-size: 0.6rem;
   flex: 0 0 auto;
 }
@@ -533,15 +531,15 @@ h1,
 
 .command-pills span[data-state="live"],
 .state-chip.good {
-  color: #043047;
-  border-color: rgba(34, 184, 255, 0.42);
+  color: #3d3428;
+  border-color: rgba(139, 115, 85, 0.36);
   background: var(--blue-soft);
 }
 
 .command-pills span[data-state="syncing"],
 .state-chip.warn {
-  color: #5a2a00;
-  border-color: rgba(255, 138, 42, 0.48);
+  color: #4a3b28;
+  border-color: rgba(154, 123, 79, 0.4);
   background: var(--orange-soft);
 }
 

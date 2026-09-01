@@ -1,26 +1,21 @@
 {
-  "captured_kst": "2026-08-27",
+  "captured_kst": "2026-09-01",
   "frontend": "http://127.0.0.1:5173",
   "backend": "http://127.0.0.1:8000",
-  "location": {"name": "Inha/Incheon", "lat": 37.451448, "lon": 126.651542},
+  "location": {"name": "Midtown Manhattan / Times Square", "lat": 40.758, "lon": -73.9855},
   "viewport": {"width": 1600, "height": 900, "deviceScaleFactor": 2},
-  "buildings": 47,
+  "buildings": 179,
   "radius_m": 400,
-  "inlet": {"speed_mps": 1.5, "from_deg": 23, "source": "Open-Meteo forecast-model current"},
+  "inlet": {"speed_mps": 1.94, "from_deg": 215, "source": "Open-Meteo forecast-model current"},
   "hud": "CFD-LITE B GRID",
-  "radar_hits": {"3d": 233},
+  "wall_condition": "impermeable_slip",
+  "radar_hits": {"3d": 325},
   "files": [
-    "cockpit_2d_inha.png",
-    "cockpit_3d_lite_inha.png",
-    "geometry_loader_map_inha.png",
-    "simplecfd_2d_field_inha.png",
-    "radar_3d_inha.png"
+    "cockpit_2d_nyc.png",
+    "cockpit_3d_lite_nyc.png",
+    "geometry_loader_map_nyc.png",
+    "simplecfd_2d_field_nyc.png",
+    "radar_3d_nyc.png"
   ],
-  "paper_figures": [
-    "fig_live_2d.png",
-    "fig_live_3d.png",
-    "fig_live_map.png",
-    "fig_live_radar.png"
-  ],
-  "note": "Fullscreen 2D/3D shots hide chrome. Map and radar are element crops so floating windows are not cut."
+  "note": "Default city is NYC. Chrome-hidden ?shot= views. Map and radar are element crops."
 }

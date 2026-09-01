@@ -46,7 +46,7 @@ interface Simulation3DProps {
 
 const DEFAULT_BOUNDS: Flight3DBounds = { min_x: -400, max_x: 400, min_y: -400, max_y: 400 };
 const TRUE_3D_PRESENTATION_SPAWN_BOUNDS: Flight3DBounds = { min_x: -190, max_x: 190, min_y: -190, max_y: 190 };
-const CFD_ALTITUDE_LEVELS = [18, 34, 54, 78, 108];
+const CFD_ALTITUDE_LEVELS = [28, 56, 92];
 
 function inletDirectionDeg(flow: FlowField2DResponse | null) {
   if (!flow) return 45;
@@ -213,7 +213,8 @@ export default function Simulation3D({
         {!true3DWind && showFlowAnimation && hasBackendWindGrid && (
           <CFDLiteWindLayer
             flow={flow}
-            showContour={false}
+            height={2.4}
+            showContour
             showArrows={false}
             showStreamlines
             altitudeLevels={CFD_ALTITUDE_LEVELS}

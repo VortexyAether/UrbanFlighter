@@ -1,6 +1,8 @@
 import {
-  DEFAULT_LAT,
-  DEFAULT_LON,
+  INHA_LAT,
+  INHA_LON,
+  NYC_LAT,
+  NYC_LON,
   modeHelp,
   type SimulationMode,
   type ViewMode,
@@ -58,10 +60,10 @@ export default function RegionPanel({
         <LocationPicker initialLat={location.lat} initialLon={location.lon} onLocationSelect={onLocationSelect} />
       </div>
       <div className="city-presets">
-        <button type="button" onClick={() => onPreset(40.7128, -74.006)} disabled={presetsDisabled}>NYC</button>
+        <button type="button" onClick={() => onPreset(NYC_LAT, NYC_LON)} disabled={presetsDisabled}>NYC</button>
         <button type="button" onClick={() => onPreset(48.8566, 2.3522)} disabled={presetsDisabled}>Paris</button>
         <button type="button" onClick={() => onPreset(35.6762, 139.6503)} disabled={presetsDisabled}>Tokyo</button>
-        <button type="button" onClick={() => onPreset(DEFAULT_LAT, DEFAULT_LON)} disabled={presetsDisabled}>Inha</button>
+        <button type="button" onClick={() => onPreset(INHA_LAT, INHA_LON)} disabled={presetsDisabled}>Inha</button>
       </div>
       <div className="coords">
         <div>

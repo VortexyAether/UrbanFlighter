@@ -1,7 +1,11 @@
 import type { RLBaselineResponse } from './api';
 
-export const DEFAULT_LAT = 37.451448;
-export const DEFAULT_LON = 126.6515423;
+export const NYC_LAT = 40.7580;
+export const NYC_LON = -73.9855;
+export const INHA_LAT = 37.451448;
+export const INHA_LON = 126.6515423;
+export const DEFAULT_LAT = NYC_LAT;
+export const DEFAULT_LON = NYC_LON;
 export const SWARM_LAT = 37.497942;
 export const SWARM_LON = 127.027621;
 export const SWARM_DATASET = 'multi_drone_gangnam_v3';

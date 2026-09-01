@@ -67,8 +67,8 @@ def estimate_flow_field_2d_grid_axis_cells(radius_m: float, grid_size_m: float) 
 
 
 class SimulationRequest(BaseModel):
-    lat: float = 37.451448
-    lon: float = 126.6515423
+    lat: float = 40.7580
+    lon: float = -73.9855
     radius_m: float = Field(default=800.0, gt=50.0)
     nx: int = Field(default=64, ge=16, le=192)
     ny: int = Field(default=64, ge=16, le=192)
@@ -85,8 +85,8 @@ class SampleWindRequest(BaseModel):
 
 
 class FlowField2DRequest(BaseModel):
-    lat: float = Field(default=37.451448, ge=-90.0, le=90.0, allow_inf_nan=False)
-    lon: float = Field(default=126.6515423, ge=-180.0, le=180.0, allow_inf_nan=False)
+    lat: float = Field(default=40.7580, ge=-90.0, le=90.0, allow_inf_nan=False)
+    lon: float = Field(default=-73.9855, ge=-180.0, le=180.0, allow_inf_nan=False)
     geometry_radius_m: float = Field(default=400.0, gt=50.0, le=1000.0)
     solve_radius_m: float = Field(default=400.0, ge=200.0, le=3000.0)
     grid_size_m: float = Field(default=20.0, gt=0.1, le=80.0)
