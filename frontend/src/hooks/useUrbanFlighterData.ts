@@ -31,8 +31,19 @@ import {
 
 const locationLockedModes = new Set<SimulationMode>(['true3d']);
 
+function readBootLocation() {
+  if (typeof window === 'undefined') return { lat: DEFAULT_LAT, lon: DEFAULT_LON };
+  const params = new URLSearchParams(window.location.search);
+  const lat = Number(params.get('lat'));
+  const lon = Number(params.get('lon'));
+  if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) {
+    return { lat, lon };
+  }
+  return { lat: DEFAULT_LAT, lon: DEFAULT_LON };
+}
+
 export function useUrbanFlighterData() {
-  const [location, setLocation] = useState<{ lat: number; lon: number }>({ lat: DEFAULT_LAT, lon: DEFAULT_LON });
+  const [location, setLocation] = useState<{ lat: number; lon: number }>(readBootLocation);
   const [flow, setFlow] = useState<FlowField2DResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('Loading default Midtown Manhattan OSM buildings + current wind...');
@@ -143,8 +154,9 @@ export function useUrbanFlighterData() {
   }, [flowCache, flowRequests]);
 
   useEffect(() => {
+    const boot = readBootLocation();
     void checkBackend();
-    void loadFlow(DEFAULT_LAT, DEFAULT_LON);
+    void loadFlow(boot.lat, boot.lon);
     return () => flowRequests.cancel();
   }, [checkBackend, flowRequests, loadFlow]);
 
