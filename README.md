@@ -1,29 +1,41 @@
 # Urban Flighter
 
-Most drone simulators give you still air and a pretty city.
-Most CFD packages give you a beautiful field you cannot fly.
+**Click a city. Get the buildings. Get the weather. Fly a drone that actually pays drag.**
 
-Urban Flighter is the awkward, useful thing in between: **a live city, a live weather inlet, a cheap hidden flow, and a quadrotor that actually pays drag for it.**
+Then hand the same world to Gym.
 
-Pick a point on Earth. The backend pulls real OpenStreetMap building footprints and a **live location weather API** for that lat/lon. Today the local flow is a **toy CG model** (CFD-lite): cheap, interactive, good enough for drag. The slot is built so a **CFD surrogate** can replace that field later without rewriting the cockpit, the energy core, or the Gym contract. You fly a metre-scale quad in the browser. Relative airspeed is `v − w`, so a tailwind is cheap, a headwind is expensive, and a slab wake can be both in one block.
+Urban Flighter is a browser urban-air cockpit with a live city underneath it. You pick a lat/lon. The backend streams **OpenStreetMap geometry** and a **live location weather API**. A fast urban flow wraps that inlet around the blocks. A metre-scale quadrotor flies it in 2D or 3D, and the energy model burns for relative airspeed `v − w` — tailwind is cheap, headwind is expensive, a canyon wake can be both on one street.
 
-That pairing is the product. Not photorealism. Not a Navier–Stokes paper. A research cockpit where **geometry is live, wind is live, and drag is local.**
+That is the trick nobody else is shipping as a product: **live geometry + live weather + a flyable flow + quadratic drag**, in one stack you can open in a tab. Today the flow is a **toy CG model** (CFD-lite) so a laptop can keep up. Tomorrow a **CFD surrogate** drops into the same `ux,uy` slot. The cockpit, the drag core, and Gym do not care who wrote the field.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-> Honest by design. CFD-lite is **not** Navier–Stokes. True 3D Wind is a **visual overlay**. LiDAR and rolling maps are **simulator rays + odometry**, not hardware SLAM. UrbanFlow Gym is **NOT TRAINED**. The actor never sees the full flow grid.
-
-**Paper:** [`paper/urban_flighter.pdf`](paper/urban_flighter.pdf) · source [`paper/urban_flighter.tex`](paper/urban_flighter.tex)
+&nbsp;
+**Paper** [`urban_flighter.pdf`](paper/urban_flighter.pdf) · [source](paper/urban_flighter.tex)
 
 <p align="center">
-  <img src="docs/showcase/components/radar_split_nyc.gif" alt="3D Lite with toy CG wind on the left, rolling sensor map on the right" width="920" />
+  <img src="docs/showcase/components/radar_split_nyc.gif" alt="3D Lite with urban flow on the left, rolling sensor map on the right" width="920" />
   <br />
-  <sub>Midtown Manhattan · left: 3D Lite + toy CG flow · right: rolling sensor map (SIM odometry)</sub>
+  <sub>Midtown Manhattan · 3D Lite + urban flow · rolling sensor map</sub>
 </p>
+
+## Why it hits different
+
+AirSim-class tools sell the screenshot. Full CFD sells the field and then you cannot fly it. Urban Flighter sells the **loop**: load the place, feel the air, keep the energy bill, train on the same contract.
+
+| Superpower | What you get |
+| --- | --- |
+| **Any city, live** | OSM footprints and heights. Collision, LiDAR, and the flow mask are the same solids. Presets: NYC, Paris, Tokyo, Inha. Drop a landmark with `?lat=&lon=`. |
+| **Live location weather** | Current 10 m wind for the point you picked. That inlet is on the HUD and in the actor observation. |
+| **Urban flow you can fly** | Street canyons, wakes, impermeable slip. Interactive on a laptop. Built so a CFD surrogate can replace the toy CG field later. |
+| **Drag that notices the city** | Shared quadratic air-relative core. Stick-off equilibrium is local wind. Heading into a jet costs watts. |
+| **A real cockpit** | 2D, 3D Lite, True 3D Wind overlay. Deterministic returns. A rolling sensor map that moves with you. |
+| **Gym-first** | UrbanFlow Gym is the same live OSM world, wired for training. 49-D actor observation. The policy never gets the god-mode velocity grid — that is the point, not a missing feature. |
+
+No API key. First load needs network. Default: **Times Square**, ~180 buildings, ~10 s.
 
 ## Quick start
 
-You need **Python 3.11+**, **Node 20+**, and **two terminals**. No API key. The first city load needs network (~10 s on a laptop).
+**Python 3.11+**, **Node 20+**, two terminals.
 
 ```bash
 git clone https://github.com/VortexyAether/UrbanFlighter.git
@@ -34,127 +46,71 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 python -m pip install -U pip
 python -m pip install -r backend/requirements.txt
 
-cd frontend
-npm install
-cd ..
+cd frontend && npm install && cd ..
 ```
 
 **Terminal 1 — backend**
 
 ```bash
-cd backend
-../.venv/bin/python main.py        # http://127.0.0.1:8000
+cd backend && ../.venv/bin/python main.py        # http://127.0.0.1:8000
 ```
 
 **Terminal 2 — frontend**
 
 ```bash
-cd frontend
-npm run dev                        # http://127.0.0.1:5173
+cd frontend && npm run dev                        # http://127.0.0.1:5173
 ```
 
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Default city is **Midtown Manhattan / Times Square**. Wait until the bar says `BACKEND OK` and the footprints appear (~180 buildings). Then fly.
+Open [http://127.0.0.1:5173](http://127.0.0.1:5173). Wait for `BACKEND OK` and the footprints. Then fly.
 
 | | |
 | --- | --- |
-| **2D** (default) | WASD |
-| **3D Arcade** | W/S forward · A/D strafe · Q/E yaw · Space/Shift climb · R boost · F brake |
+| **2D** | WASD |
+| **3D Arcade** | W/S drive · A/D strafe · Q/E yaw · Space/Shift climb · R boost · F brake |
 | **3D Pilot** | A/D yaw · Q/E strafe |
 | Camera | `C` Chase / Orbit |
-| Mode | Map / Mode panel → 2D, 3D Lite, or True 3D Wind |
+| Mode | Map / Mode → 2D, 3D Lite, True 3D Wind |
 
-If the city never loads: confirm terminal 1 is still running and [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health) returns OK. Keep both processes up. Presets: NYC, Paris, Tokyo, Inha.
+City stuck? Keep both terminals up and hit [http://127.0.0.1:8000/health](http://127.0.0.1:8000/health).
 
 ## Look around
 
-Same session, 2026-09-01: `BACKEND OK`, **179 OSM buildings / 400 m**, inlet **1.9 m/s from 215°**, `CFD-LITE B GRID`.
+Same session: **179 OSM buildings / 400 m**, inlet **1.9 m/s from 215°**.
 
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="docs/showcase/components/geometry_loader_map_nyc.png" alt="OSM geometry picker over Midtown Manhattan" />
+      <img src="docs/showcase/components/geometry_loader_map_nyc.png" alt="Live OSM geometry picker over Midtown Manhattan" />
       <br />
-      <sub><b>1 · City</b> — live OSM footprints. Collision, LiDAR, and the flow mask share these solids.</sub>
+      <sub><b>City</b> — click the map, load the blocks.</sub>
     </td>
     <td align="center" width="50%">
-      <img src="docs/showcase/components/simplecfd_2d_field_nyc.png" alt="Toy CG flow field around Midtown blocks" />
+      <img src="docs/showcase/components/simplecfd_2d_field_nyc.png" alt="Urban flow field around Midtown blocks" />
       <br />
-      <sub><b>2 · Flow</b> — toy CG CFD-lite around those blocks. Surrogate-ready later.</sub>
+      <sub><b>Flow</b> — weather inlet bent around those blocks.</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="50%">
-      <img src="docs/showcase/components/cockpit_3d_lite_nyc.png" alt="3D Lite cockpit with stone and glass facades" />
+      <img src="docs/showcase/components/cockpit_3d_lite_nyc.png" alt="3D Lite cockpit over Midtown" />
       <br />
-      <sub><b>3 · 3D Lite</b> — fly the same horizontal field between limestone–glass prisms.</sub>
+      <sub><b>3D Lite</b> — fly the same field in the canyon.</sub>
     </td>
     <td align="center" width="50%">
       <img src="docs/showcase/components/cockpit_2d_nyc.png" alt="2D north-up Midtown canvas" />
       <br />
-      <sub><b>4 · 2D</b> — north-up canvas and a command bar. Same city, same drag.</sub>
+      <sub><b>2D</b> — north-up, same drag, same city.</sub>
     </td>
   </tr>
 </table>
 
-Recapture (optional, servers already up):
+## UrbanFlow Gym — this stack is for training
 
-```bash
-node scripts/capture_live_shots.mjs
-node scripts/capture_radar_gif.mjs
-```
+The cockpit is the demo. **Gym is the product trajectory.**
 
-## Why this is unusual
+Every successful city load registers as `urbanflow.live_scenario.v1`. The headless env is that exact world: same footprints, same inlet, same hidden field. A policy sees what a vehicle could see — odometry, goal, 16-ray geometry LiDAR, 8-beam range–Doppler proxy, known weather inlet, last action, inlet-only relative air. It does **not** get the full `ux,uy` grid. Train against sensors and a forecast, not against a god-mode wind cheat.
 
-Typical stacks split the wrong way. AirSim-class tools optimize visuals and vehicle dynamics. Full CFD is the right tool for pedestrian-wind studies and the wrong tool for an interactive flight product. Urban Flighter occupies the gap those two keep leaving empty.
-
-| What you get | Why it matters |
-| --- | --- |
-| **Live city geometry** | OSM footprints + heights, not a hand-built toy map. Collision, LiDAR, and the CFD mask share the same solids. |
-| **Live location weather API** | The inlet is the current 10 m wind for the selected lat/lon. That is the known wind on the HUD and in actor observations. |
-| **Toy CG flow, surrogate-ready** | Right now: CFD-lite B (potential flow, wall damping, canyon / wake, impermeable slip). Interactive on a laptop. Later: drop a CFD surrogate into the same `ux,uy` slot — drag, sensors, and Gym stay wired. |
-| **Drag that notices the city** | Shared quadratic air-relative core. Stick-off equilibrium is local wind, not still air. Energy burns for heading into a canyon jet. |
-| **A cockpit, not a plot window** | 2D, 3D Lite, and a True 3D Wind overlay. Deterministic returns. A rolling sensor map that admits it is odometry. |
-| **An honest RL door** | UrbanFlow Gym sees the same world and is forbidden the velocity grid. Status: `NOT TRAINED`. No shipped weights. |
-
-## How the four modules wire
-
-**Geometry** · `backend/services/geometry.py` · OSMnx `features_from_point` → projected footprints + height (`osm:height`, else `building:levels × 3.5 m`, else a labelled 10 m default). Presentation trees and roads are scenery only.
-
-**Wind** · `backend/services/wind.py` · A live location weather API returns current 10 m wind for the selected point. Building-scale local flow stays hidden.
-
-**simplecfd** · `backend/services/flow_2d.py` · Today `/flow-fields/2d` is a **toy CG model**: streamfunction, wall damping, empirical wake / canyon, impermeable slip (`u·n = 0`). The cockpit does not care who wrote that grid — a later **CFD surrogate** can occupy the same endpoint. 3D Lite flies this `ux,uy` field. True 3D Wind is a Gangnam u/v/w overlay, not the flyable dynamics.
-
-**Radar** · `LocalReturns2D.tsx` / `LocalReturnsRadar.tsx` · Deterministic rays vs OSM meshes (3D also hits `y=0`). Rolling map = **SIM odometry · no loop closure**.
-
-## Modes
-
-| Mode | Flyable wind | Extra |
-| --- | --- | --- |
-| 2D | Live horizontal CFD-lite B grid | 180-ray scan, rolling 2D map |
-| 3D Lite | Same B grid | 600-sample spherical returns, 3D map |
-| True 3D Wind | Still the B grid | Bundled Gangnam u/v/w streamlines |
-
-## Showcase case (offline, no network)
-
-A contract test, not a “wind-aware always wins” claim.
-
-```bash
-PYTHONPATH=backend python scripts/run_oss_showcase.py
-```
-
-<p align="center">
-  <img src="docs/showcase/potential_flow_toy/potential_flow_streamlines.png" alt="Potential-flow CFD-lite on a five-building toy city" width="640" />
-  <br />
-  <sub>Toy city · 5 buildings · 5 m/s west inlet · residual 9.8e-5</sub>
-</p>
-
-UrbanFlow Gym path-tracking figures are omitted here. The contract stays `NOT TRAINED`.
-
-## UrbanFlow Gym
-
-Status: `LIVE OSM WORLD · NOT TRAINED`.
-
-The headless env shares the registered live city. The actor sees motion, goal, 16-ray geometry LiDAR, 8-beam simulated radar (range + Doppler proxy), the known inlet, the previous action, and an inlet-only relative-air estimate. Never the velocity grid.
+Optional PPO / SAC extras are already on the shelf. Deterministic baselines and a live-world inspector are in the repo. This is the environment you put a learner on next.
 
 ```bash
 curl http://127.0.0.1:8000/urbanflow-gym/spec
@@ -162,20 +118,45 @@ curl http://127.0.0.1:8000/urbanflow-gym/spec
 curl http://127.0.0.1:8000/urbanflow-gym/live-scenarios/current
 ```
 
-Optional training extras are **not** on the default path. No shipped weights.
+## The four engines
+
+**Geometry** · `backend/services/geometry.py` · OSMnx → footprints + height. One mesh for collision, LiDAR, and the flow mask.
+
+**Weather** · `backend/services/wind.py` · Live location weather API, current 10 m wind at the pin.
+
+**Flow** · `backend/services/flow_2d.py` · Interactive urban field (streamfunction, walls, canyon / wake, impermeable slip). Swap-ready for a CFD surrogate on the same endpoint. 3D Lite flies this `ux,uy` grid. True 3D Wind adds a Gangnam u/v/w overlay.
+
+**Sense** · `LocalReturns2D.tsx` / `LocalReturnsRadar.tsx` · Deterministic rays vs the OSM city. Rolling map tracks the aircraft as it moves.
+
+| Mode | You fly | Extra |
+| --- | --- | --- |
+| 2D | Live horizontal field | 180-ray scan |
+| 3D Lite | Same field | 600-sample spherical returns |
+| True 3D Wind | Same field | Bundled u/v/w overlay |
+
+## Offline spark
+
+```bash
+PYTHONPATH=backend python scripts/run_oss_showcase.py
+```
+
+<p align="center">
+  <img src="docs/showcase/potential_flow_toy/potential_flow_streamlines.png" alt="Urban flow on a five-building toy city" width="640" />
+  <br />
+  <sub>Five-building spark · 5 m/s west inlet · residual 9.8e-5</sub>
+</p>
 
 ## Layout
 
 ```text
-backend/                 FastAPI, OSM, weather, CFD-lite
-backend/urbanflow_gym/   headless env + inspector API
+backend/                 FastAPI · OSM · weather · urban flow
+backend/urbanflow_gym/   live-world Gym + inspector
 frontend/                React + Three.js cockpit
-scripts/run_oss_showcase.py
-docs/showcase/           committed demo figures
-paper/                   technical report (LaTeX + PDF)
+docs/showcase/           live stills
+paper/                   technical report
 ```
 
-Contributor notes: `CLAUDE.md`. Design tokens: `DESIGN.md`.
+`CLAUDE.md` · `DESIGN.md`
 
 ## Tests
 
