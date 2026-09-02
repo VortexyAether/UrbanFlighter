@@ -1,6 +1,6 @@
 {
   "captured_kst": "2026-09-01",
-  "file": "radar_3d_nyc.gif",
+  "file": "radar_split_nyc.gif",
   "frames": 48,
   "interval_ms": 220,
   "layout": "left 3D Lite + CFD-lite streamlines, right rolling sensor map",

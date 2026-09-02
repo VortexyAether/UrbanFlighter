@@ -9,7 +9,7 @@ const { chromium } = await import(pathToFileURL(playwrightRoot).href);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const frontend = process.env.URBAN_FLIGHTER_FRONTEND ?? 'http://127.0.0.1:5173';
 const frameDir = join(root, 'docs/showcase/components/.radar-gif-frames');
-const outGif = join(root, 'docs/showcase/components/radar_3d_nyc.gif');
+const outGif = join(root, 'docs/showcase/components/radar_split_nyc.gif');
 const frameCount = 48;
 const intervalMs = 220;
 

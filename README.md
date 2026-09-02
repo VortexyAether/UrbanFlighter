@@ -48,9 +48,9 @@ Open-Meteo current 10 m `wind_speed_10m` / `wind_direction_10m` in m/s. If the f
 
 ### 4. radar — `LocalReturns2D.tsx` / `LocalReturnsRadar.tsx`
 
-Deterministic simulator rays vs OSM collision meshes (3D also hits `y=0` ground). Rolling map = **SIM odometry · no loop closure**. The GIF is a split view (`?shot=split`): left is 3D Lite with the aircraft and CFD-lite streamlines, right is the same rolling map while it holds W/Space and a short A/D turn.
+Deterministic simulator rays vs OSM collision meshes (3D also hits `y=0` ground). Rolling map = **SIM odometry · no loop closure**. The GIF is a split view (`?shot=split`): left is 3D Lite with the aircraft and CFD-lite streamlines, right is the same rolling map while it holds W/R and a short A/D turn.
 
-![3D Lite + CFD-lite flow on the left, rolling sensor map on the right](docs/showcase/components/radar_3d_nyc.gif)
+![3D Lite + CFD-lite flow on the left, rolling sensor map on the right](docs/showcase/components/radar_split_nyc.gif)
 
 2D status bar only (no floating panels):
 
