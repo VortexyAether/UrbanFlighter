@@ -10,8 +10,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const frontend = process.env.URBAN_FLIGHTER_FRONTEND ?? 'http://127.0.0.1:5173';
 const frameDir = join(root, 'docs/showcase/components/.radar-gif-frames');
 const outGif = join(root, 'docs/showcase/components/radar_3d_nyc.gif');
-const frameCount = 32;
-const intervalMs = 150;
+const frameCount = 48;
+const intervalMs = 220;
 
 rmSync(frameDir, { recursive: true, force: true });
 mkdirSync(frameDir, { recursive: true });
@@ -35,13 +35,13 @@ const radar = page.locator('.slam-window').first();
 await radar.waitFor({ state: 'visible', timeout: 15_000 });
 
 await page.keyboard.down('KeyW');
-await page.keyboard.down('Space');
+await page.keyboard.down('KeyR');
 
 for (let i = 0; i < frameCount; i += 1) {
-  if (i === 10) await page.keyboard.down('KeyD');
-  if (i === 18) await page.keyboard.up('KeyD');
-  if (i === 18) await page.keyboard.down('KeyA');
-  if (i === 26) await page.keyboard.up('KeyA');
+  if (i === 14) await page.keyboard.down('KeyD');
+  if (i === 22) await page.keyboard.up('KeyD');
+  if (i === 28) await page.keyboard.down('KeyA');
+  if (i === 38) await page.keyboard.up('KeyA');
   await page.screenshot({
     path: join(frameDir, `frame-${String(i).padStart(2, '0')}.png`),
     type: 'png',
@@ -50,19 +50,19 @@ for (let i = 0; i < frameCount; i += 1) {
 }
 
 await page.keyboard.up('KeyW');
-await page.keyboard.up('Space');
+await page.keyboard.up('KeyR');
 await page.keyboard.up('KeyD');
 await page.keyboard.up('KeyA');
 await browser.close();
 
 const frames = readdirSync(frameDir).filter((name) => name.endsWith('.png')).sort().map((name) => join(frameDir, name));
 const encoded = spawnSync('magick', [
-  '-delay', '13',
+  '-delay', '8',
   '-loop', '0',
   ...frames,
-  '-resize', '1280x',
+  '-resize', '1200x',
   '-dither', 'FloydSteinberg',
-  '-colors', '56',
+  '-colors', '48',
   '-layers', 'OptimizePlus',
   outGif,
 ], { cwd: root });
@@ -78,6 +78,6 @@ writeFileSync(join(root, 'docs/showcase/components/radar_gif_meta.json'), `${JSO
   frames: frameCount,
   interval_ms: intervalMs,
   layout: 'left 3D Lite + CFD-lite streamlines, right rolling sensor map',
-  note: 'Chrome-hidden ?shot=split. Aircraft holds W/Space with a short A/D turn. SIM odometry only.',
+  note: 'Chrome-hidden ?shot=split long take. Same clip length, 4x showcase motion + W/R boost, short A/D S-curve. SIM odometry only.',
 }, null, 2)}\n`);
 console.log(outGif);

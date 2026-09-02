@@ -217,7 +217,7 @@ export default function Simulation3D({
             flow={flow}
             height={2.4}
             showContour
-            showArrows={showcaseFraming}
+            showArrows={false}
             showStreamlines
             altitudeLevels={showcaseFraming ? [18, 28, 42] : CFD_ALTITUDE_LEVELS}
             showcase={showcaseFraming}
@@ -239,6 +239,8 @@ export default function Simulation3D({
           lidarVisible={showLidar}
           lidarVisualizationVisible={showLidar && !presentationMode}
           showSafetyEnvelope={!presentationMode}
+          visualScale={showcaseFraming ? 11 : 1}
+          motionTimeScale={showcaseFraming ? 4 : 1}
           onMetricsUpdate={handleMetricsUpdate}
           onLidarUpdate={onLidarTelemetry}
         />

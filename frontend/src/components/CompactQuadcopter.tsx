@@ -7,6 +7,7 @@ interface CompactQuadcopterProps {
   safetyRadiusM: number;
   verticalSafetyClearanceM: number;
   showSafetyEnvelope?: boolean;
+  visualScale?: number;
 }
 
 const MOTOR_OFFSET = 0.145;
@@ -55,9 +56,10 @@ export default function CompactQuadcopter({
   safetyRadiusM,
   verticalSafetyClearanceM,
   showSafetyEnvelope = false,
+  visualScale = 1,
 }: CompactQuadcopterProps) {
   return (
-    <group name="compact-0.58m-quadcopter">
+    <group name="compact-0.58m-quadcopter" scale={visualScale}>
       <mesh rotation={[0, Math.PI / 4, 0]} castShadow receiveShadow>
         <boxGeometry args={[0.41, 0.025, 0.03]} />
         <meshStandardMaterial color="#2f3b42" metalness={0.6} roughness={0.34} />
@@ -92,7 +94,7 @@ export default function CompactQuadcopter({
         <sphereGeometry args={[0.012, 10, 8]} />
         <meshBasicMaterial color="#79ffb5" toneMapped={false} />
       </mesh>
-      <pointLight position={[0, 0.13, -0.05]} color="#75eaff" intensity={0.42} distance={3.2} decay={2} />
+      <pointLight position={[0, 0.13, -0.05]} color="#75eaff" intensity={0.42 + 0.18 * Math.max(0, visualScale - 1)} distance={3.2 * visualScale} decay={2} />
       <Rotors />
       {showSafetyEnvelope && (
         <mesh

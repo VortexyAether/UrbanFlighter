@@ -1,8 +1,8 @@
 {
   "captured_kst": "2026-09-01",
   "file": "radar_3d_nyc.gif",
-  "frames": 32,
-  "interval_ms": 150,
+  "frames": 48,
+  "interval_ms": 220,
   "layout": "left 3D Lite + CFD-lite streamlines, right rolling sensor map",
-  "note": "Chrome-hidden ?shot=split. Aircraft holds W/Space with a short A/D turn. SIM odometry only."
+  "note": "Chrome-hidden ?shot=split long take. Same clip length, 4x showcase motion + W/R boost, short A/D S-curve. SIM odometry only."
 }

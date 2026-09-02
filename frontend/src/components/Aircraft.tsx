@@ -45,6 +45,8 @@ interface AircraftProps {
     lidarVisible: boolean;
     lidarVisualizationVisible?: boolean;
     showSafetyEnvelope?: boolean;
+    visualScale?: number;
+    motionTimeScale?: number;
     onMetricsUpdate?: (metrics: AircraftMetrics) => void;
     onLidarUpdate?: (telemetry: LidarTelemetry | null) => void;
 }
@@ -109,6 +111,8 @@ const Aircraft: React.FC<AircraftProps> = ({
     lidarVisible,
     lidarVisualizationVisible = lidarVisible,
     showSafetyEnvelope = false,
+    visualScale = 1,
+    motionTimeScale = 1,
     onMetricsUpdate,
     onLidarUpdate,
 }) => {
@@ -229,7 +233,7 @@ const Aircraft: React.FC<AircraftProps> = ({
         let energyMetrics = calculateEnergyConsumption(vector3(stateRef.current.velocity), windInfo);
         const fixedStep = consumeFlight3DFixedSteps(
             physicsAccumulatorRef.current,
-            frameDelta,
+            frameDelta * Math.max(0.1, motionTimeScale),
             (deltaSeconds) => {
                 windInfo = windAt(stateRef.current.position);
                 stateRef.current = stepFlight3DMotion(
@@ -322,6 +326,7 @@ const Aircraft: React.FC<AircraftProps> = ({
                     safetyRadiusM={safetyRadiusM}
                     verticalSafetyClearanceM={verticalSafetyClearanceM}
                     showSafetyEnvelope={showSafetyEnvelope}
+                    visualScale={visualScale}
                 />
             </group>
             <LidarSensorVisualization
